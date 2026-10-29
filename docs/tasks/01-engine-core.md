@@ -32,13 +32,13 @@ public/assets/placeholder/
 
 Каждый шаг — отдельный коммит.
 
-- [ ] **1. Подготовка проекта.**
+- [x] **1. Подготовка проекта.**
   - Удалить демо-контент шаблона Vite (`App.css`, `assets/hero.png`, `react.svg`, `vite.svg`, содержимое `App.tsx`, `index.css` — оставить только reset и фон `#12111A`).
   - Установить `pixi.js@^8`, `pixi-filters@^6`, `jotai@^2`, dev: `vitest`. Скрипт `"test": "vitest run"`.
   - `vite.config.ts`: `base: './'`.
   - В `index.html`: `lang="ru"`, title `Purr-veillance`, подключить шрифты из `docs/ui-style.md`.
   - `.gitignore`: `public/assets/audio/placeholder/`.
-- [ ] **2. Генератор стемов-заглушек** `scripts/gen-placeholder-stems.mjs` (Node, без зависимостей), скрипт `npm run gen:placeholders`.
+- [x] **2. Генератор стемов-заглушек** `scripts/gen-placeholder-stems.mjs` (Node, без зависимостей), скрипт `npm run gen:placeholders`.
   - 120 BPM, 4/4, 16 тактов = ровно 32,000 с; WAV моно 16 бит 44 100 Гц; все файлы ровно `1 411 200` сэмплов.
   - 8 файлов `public/assets/audio/placeholder/<stem>.wav`, каждый узнаваем на слух и с выраженными ударами (для проверки анимации):
     - `drums` — кик на каждую долю (синус 150→50 Гц, 120 мс) + шумовой хэт на офбитах;
@@ -51,29 +51,29 @@ public/assets/placeholder/
     - `bongo` — два тона (300/200 Гц) поочерёдно восьмыми.
   - Все затухания внутри лупа, последний сэмпл ≈ 0 (шов без щелчка). Нормализация пиков до −3 dBFS.
   - Плюс SFX `horn.wav` (два коротких квадратных тона, 0,4 с) — для проверки шины SFX.
-- [ ] **3. Огибающие** `src/audio/envelope.ts` + тесты — по алгоритму из `docs/audio.md`.
+- [x] **3. Огибающие** `src/audio/envelope.ts` + тесты — по алгоритму из `docs/audio.md`.
   - `computeEnvelope(channels: Float32Array[], sampleRate): { values: Float32Array; hopSeconds: number }`
   - `detectOnsets(values, on = 0.5, off = 0.3): Uint8Array`
   - `sampleEnvelope(env, loopTime): number` — с линейной интерполяцией.
   - Тесты: тишина → нули; синус постоянной амплитуды → ровное значение ≈ 1 после нормализации; импульсы раз в 0,5 с → onsets ровно в нужных окнах; гистерезис не «дрожит» на сигнале около порога.
-- [ ] **4. Музыкальные часы** `src/audio/clock.ts` + тесты.
+- [x] **4. Музыкальные часы** `src/audio/clock.ts` + тесты.
   - `positionAt(elapsed, config)` и `createBeatDetector(config)` с методом `update(elapsed)`, возвращающим `{ beat?: MusicPosition; bar?: MusicPosition }`.
   - Тесты: позиции на границах долей и тактов, переход через конец лупа, пропуск нескольких долей даёт одно событие.
-- [ ] **5. AudioEngine** `src/audio/AudioEngine.ts` — по API из `docs/audio.md`.
+- [x] **5. AudioEngine** `src/audio/AudioEngine.ts` — по API из `docs/audio.md`.
   - Загрузка через `fetch` + `decodeAudioData`, прогресс загрузки, огибающие считаются сразу после декодирования.
   - `start()` создаёт/возобновляет контекст и стартует все стемы одним `t0`; повторный вызов ничего не делает.
   - Предупреждение в консоль, если длина стема отличается от расчётной больше чем на 50 мс.
   - Экспорт синглтона `engine` + функция `createEngine` для тестов.
-- [ ] **6. PixiHost** `src/render/PixiHost.tsx`.
+- [x] **6. PixiHost** `src/render/PixiHost.tsx`.
   - Один `Application` (`await app.init(...)`), логическое разрешение 1280×720, `resolution: devicePixelRatio`, вписывание в окно с сохранением пропорций (letterbox).
   - Корректное уничтожение при размонтировании (StrictMode в dev монтирует дважды — не должно быть двух холстов и утечек).
   - Отдаёт наружу `app` через колбэк `onReady(app)`.
   - В тикере вызывается `engine.update()`.
-- [ ] **7. CatSprite** `src/render/CatSprite.ts` + `CatSprite.logic.ts` с тестами.
+- [x] **7. CatSprite** `src/render/CatSprite.ts` + `CatSprite.logic.ts` с тестами.
   - Логика: `computeScale(a, cfg, t)` и `nextFrame(state, onset, cfg)` — чистые функции по `docs/audio.md`.
   - Спрайт: `Container` с `Sprite`, `anchor (0.5, 1)`, метод `update(amplitude, onset, timeSec)`; `eventMode = 'static'`, курсор `pointer`, событие клика наружу.
   - Тесты логики: сохранение объёма (`scaleX * scaleY ≈ 1`), три режима кадров, дыхание только в тишине.
-- [ ] **8. Песочница** `src/dev/Sandbox.tsx`.
+- [x] **8. Песочница** `src/dev/Sandbox.tsx`.
   - Экран «Нажми, чтобы начать» (разблокировка аудио), под ним прогресс загрузки.
   - Pixi-холст: 8 котов-заглушек в ряд, подписи со стемом; режимы кадров разные (`drums` — momentary, `bongo` — latch, остальные — none; у `bass` — `axis: 'y'`, squash 0.2, у `trumpet` — `axis: 'x'`).
   - Панель React поверх/рядом: для каждого стема — вкл/выкл (gain 0 ↔ 1), ползунок gain 0..1, ползунок cutoff 200..20000 Гц (лог-шкала), живой индикатор амплитуды.
@@ -95,7 +95,7 @@ public/assets/placeholder/
 - [ ] 60 FPS на обычном ноутбуке (проверить вкладкой Performance или счётчиком FPS в песочнице).
 - [ ] Работает в Chrome и Firefox; в Safari — проверить, если есть доступ, и записать результат в «Отклонения и решения».
 - [ ] `npm run build` → `npm run preview` работает с относительными путями (открыть из подпапки).
-- [ ] `npm run build`, `npm run lint`, `npm test` — без ошибок.
+- [ ] `npm run build`, `npm run lint`, `npm test` — без ошибок. ✅
 
 ## Вне объёма
 
@@ -103,4 +103,12 @@ public/assets/placeholder/
 
 ## Отклонения и решения
 
-_(заполняет исполнитель)_
+- **`CatAnimConfig` определён в `src/data/stems.ts`**, а не в `CatSprite.logic.ts`. Это позволяет `stems.ts` хранить конфиги котов без циклической зависимости `data → render`; `CatSprite.logic.ts` реэкспортирует тип для обратной совместимости.
+
+- **`nextFrame` принимает 4-й аргумент `prevOnset`**: в спецификации сигнатура `nextFrame(state, onset, cfg)`, но для режима `latch` нужно отслеживать фронт сигнала. Состояние `prevOnset` хранит `CatSprite` и передаёт в чистую функцию — тестируемость сохранена.
+
+- **`vite.config.ts` использует `import { defineConfig } from 'vitest/config'`** вместо `vite`, потому что `tsconfig.node.json` с `"types": ["node"]` не подхватывал тройной слеш-референс vitest.
+
+- **Декодирование аудио через `OfflineAudioContext`** (1 канал, 1 сэмпл, 44100 Гц) на этапе `load()`: позволяет декодировать файлы без создания живого `AudioContext` до жеста пользователя, соблюдая ограничения браузера на автовоспроизведение.
+
+- **Safari**: доступа нет, проверка не проводилась. Известный риск — WAV-файлы декодируются корректно во всех браузерах; единственный потенциальный момент — `AudioContext` API (критичных несовместимостей не ожидается).
