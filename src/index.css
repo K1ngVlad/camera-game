@@ -1,0 +1,18 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  background: #12111A;
+  font-family: 'Rubik', sans-serif;
+  color: #F4F1E8;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
