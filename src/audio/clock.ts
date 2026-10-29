@@ -37,7 +37,6 @@ export interface BeatDetector {
 export function createBeatDetector(config: MusicConfig): BeatDetector {
   const { bpm, beatsPerBar, bars } = config
   const secPerBeat = 60 / bpm
-  const loopDuration = bars * beatsPerBar * secPerBeat
   const totalBeatsInLoop = bars * beatsPerBar
 
   let prevBeatIndex = -1
