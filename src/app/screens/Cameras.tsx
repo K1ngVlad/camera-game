@@ -64,7 +64,7 @@ export function Cameras() {
         boxSizing: 'border-box',
       }}
     >
-      {/* Left panel — camera grid */}
+      {/* Left panel — camera grid (captures clicks) */}
       <div
         style={{
           width: vp.x,
@@ -76,6 +76,7 @@ export function Cameras() {
           padding: 16,
           gap: 12,
           boxSizing: 'border-box',
+          pointerEvents: 'auto',
         }}
       >
         <button

@@ -51,6 +51,7 @@ export function Menu() {
         justifyContent: 'center',
         gap: 24,
         position: 'relative',
+        pointerEvents: 'auto',
       }}
     >
       {/* Title */}

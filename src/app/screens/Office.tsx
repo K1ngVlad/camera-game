@@ -25,6 +25,7 @@ export function Office() {
         padding: 40,
         gap: 32,
         boxSizing: 'border-box',
+        pointerEvents: 'auto',
       }}
     >
       {/* Top bar */}

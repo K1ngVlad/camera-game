@@ -58,20 +58,20 @@ function GameContent() {
       {/* Pixi canvas — full game field, behind UI */}
       <PixiHost onReady={handlePixiReady} />
 
-      {/* UI layer */}
+      {/* UI layer — containers are pass-through; interactive bits opt in with pointer-events:auto */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
           pointerEvents: 'none',
+          width: '100%',
+          height: '100%',
         }}
       >
-        <div style={{ pointerEvents: 'auto', width: '100%', height: '100%', position: 'relative' }}>
-          {session.screen === 'menu' && <Menu />}
-          {session.screen === 'office' && <Office />}
-          {session.screen === 'cameras' && <Cameras />}
-          {session.screen === 'stage' && <Stage />}
-        </div>
+        {session.screen === 'menu' && <Menu />}
+        {session.screen === 'office' && <Office />}
+        {session.screen === 'cameras' && <Cameras />}
+        {session.screen === 'stage' && <Stage />}
       </div>
 
       {/* Overlays */}

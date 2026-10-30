@@ -66,7 +66,8 @@ export function PixiHost({ onReady }: Props) {
       style={{
         position: 'absolute',
         inset: 0,
-        pointerEvents: 'none',
+        // Canvas receives pointer events — individual UI containers above
+        // should set pointer-events: none so clicks fall through to Pixi.
       }}
     />
   )

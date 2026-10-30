@@ -17,6 +17,7 @@ export function Stage() {
         position: 'relative',
         background: 'var(--bg-deep)',
         overflow: 'hidden',
+        pointerEvents: 'auto',
       }}
     >
       {/* Stage backdrop: curtains */}

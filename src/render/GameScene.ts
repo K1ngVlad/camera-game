@@ -44,6 +44,8 @@ export class GameScene {
     this.camContainer.filters = [this.scanlineFilter, this.noiseFilter]
 
     app.stage.addChild(this.root)
+    // Ensure Pixi event system is active so cat sprites receive pointer events
+    app.stage.eventMode = 'passive'
 
     this.loadTextures().catch(console.error)
     this.subscribeToStore()
