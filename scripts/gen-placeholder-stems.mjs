@@ -430,6 +430,35 @@ function sfxFound() {
   return normalize(buf, 0.7)
 }
 
+function sfxBlackout() {
+  // Short low-frequency thud + rumble (~0.3 s)
+  const dur = Math.round(0.3 * SR)
+  const buf = new Float32Array(dur)
+  for (let s = 0; s < dur; s++) {
+    const t = s / SR
+    // Sub-bass thud at 60 Hz, decaying rumble at 80 Hz
+    buf[s] += Math.sin(2 * Math.PI * 60 * t) * env(t, 0.001, 0.08) * 0.6
+    buf[s] += Math.sin(2 * Math.PI * 80 * t) * env(t, 0.001, 0.15) * 0.4
+    // High-frequency click transient
+    buf[s] += Math.sin(2 * Math.PI * 3200 * t) * env(t, 0.0005, 0.008) * 0.3
+  }
+  return normalize(buf, 0.75)
+}
+
+function sfxUv() {
+  // Short electric click (~0.2 s)
+  const dur = Math.round(0.2 * SR)
+  const buf = new Float32Array(dur)
+  for (let s = 0; s < dur; s++) {
+    const t = s / SR
+    buf[s] += Math.sin(2 * Math.PI * 1200 * t) * env(t, 0.001, 0.04) * 0.5
+    buf[s] += Math.sin(2 * Math.PI * 2400 * t) * env(t, 0.001, 0.025) * 0.3
+    // Slight noise texture
+    buf[s] += (seededRand() * 2 - 1) * env(t, 0.0005, 0.015) * 0.2
+  }
+  return normalize(buf, 0.65)
+}
+
 // ── run ───────────────────────────────────────────────────────────────────────
 
 const camDir = join(PLACEHOLDER_DIR, 'camera')
@@ -465,5 +494,7 @@ for (const id of CAT_IDS) {
 console.log('\nGenerating SFX...')
 writeWav(sfxHorn(), join(sfxDir, 'horn.wav'))
 writeWav(sfxFound(), join(sfxDir, 'found.wav'))
+writeWav(sfxBlackout(), join(sfxDir, 'blackout.wav'))
+writeWav(sfxUv(), join(sfxDir, 'uv.wav'))
 
 console.log('\nDone.')
