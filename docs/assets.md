@@ -65,3 +65,17 @@ src/assets/
 
 - Арт: `public/assets/placeholder/cat_a.svg`, `cat_b.svg` с подкраской `tint` из конфига кота.
 - Звук: `npm run gen:placeholders` генерирует в `public/assets/audio/placeholder/` камерные лупы (`camera/<catId>.wav`, 4 такта) и стемы песни (`song/<catId>.wav`, 34 такта), не коммитятся.
+
+## Как добавить свой ассет
+
+**Картинку:**
+
+1. Положи исходник в `art-src/` по пути `cats/<catId>/body.png` (или нужный кадр).
+2. Запусти `npm run art` — скрипт обрежет, отмасштабирует и сохранит в `src/assets/`.
+3. Открой песочницу (`?dev=1` в dev-сервере), нажми «Нажми, чтобы начать» и убедись что в таблице Asset report колонка Art показывает `art`, а не `stub`.
+
+**Звук:**
+
+1. Положи файл в `src/assets/audio/camera/<catId>.wav` (или `.ogg`/`.mp3` для камерного лупа) или `src/assets/audio/song/<catId>.wav` для стема песни.
+2. Перезапусти dev-сервер (`npm run dev`).
+3. В песочнице проверь таблицу Asset report: колонка Len должна показывать `✓`, иначе длина файла расходится с ожидаемой — смотри предупреждение в консоли.
