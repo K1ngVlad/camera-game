@@ -14,7 +14,7 @@ import { saveAtom, sessionAtom } from '../state/atoms'
 import { getCameraBackground } from './cameraBackground'
 import { CATS } from '../data/cats'
 import { getCatView } from '../game/behaviors/index'
-import { currentCat } from '../game/progression'
+import { currentCat, worldState } from '../game/progression'
 import { CAMERA_VIEWPORT } from '../app/layout'
 import { createCatRenderer } from './cats/index'
 import type { CatRenderer, RenderCtx } from './cats/index'
@@ -22,19 +22,42 @@ import type { CatView } from '../game/types'
 
 const VP = CAMERA_VIEWPORT
 
+// Target alpha values for lighting overlays
+const BLACKOUT_ALPHA_NO_UV = 0.93
+const BLACKOUT_ALPHA_UV = 0.55
+const UV_TINT_ALPHA_BLACKOUT = 0.30
+const UV_TINT_ALPHA_NORMAL = 0.28
+
+// Transition durations in seconds
+const UV_FADE_SECS = 0.15
+const BLACKOUT_END_SECS = 0.8
+
 export class GameScene {
   private app: Application
   private root: Container
   private camContainer: Container
   // Explicit layer order inside camContainer (all at VP-local coords):
-  private bgLayer: Container      // 1: camera background
-  private worldLayer: Container   // 2: props and cat sprites (darkened in blackout)
+  private bgLayer: Container       // 1: camera background
+  private worldLayer: Container    // 2: props and cat sprites (darkened in blackout)
   private lightingLayer: Container // 3: dark blackout overlay + UV tint
   private emissiveLayer: Container // 4: self-lit elements (pumpkin glow, cat in UV)
   private bgSprite: Sprite | null = null
   private noiseFilter: NoiseFilter
   private scanlines: TilingSprite | null = null
-  private uvOverlay: Sprite | null = null
+
+  // Lighting overlays (inside lightingLayer)
+  private blackoutOverlay: Sprite | null = null
+  private uvTintOverlay: Sprite | null = null
+
+  // Current and target alpha for smooth transitions
+  private blackoutAlphaCurrent = 0
+  private blackoutAlphaTarget = 0
+  private uvTintAlphaCurrent = 0
+  private uvTintAlphaTarget = 0
+  // Fade speeds (alpha units per second)
+  private blackoutFadeSpeed = 999 // instant by default; set to slow for end-of-blackout
+  private uvFadeSpeed = 1 / UV_FADE_SECS
+
   private currentCameraId = -1
   private noiseAlpha = 0
   private textureCache: Map<string, Texture> = new Map()
@@ -66,11 +89,28 @@ export class GameScene {
     this.camContainer.addChild(this.lightingLayer)
     this.camContainer.addChild(this.emissiveLayer)
 
+    // Pre-create persistent overlay sprites in lightingLayer
+    this.blackoutOverlay = this.makeOverlay(0x05040a, 0)
+    this.uvTintOverlay = this.makeOverlay(0x6e46ff, 0)
+    this.uvTintOverlay.blendMode = 'add'
+    this.lightingLayer.addChild(this.blackoutOverlay)
+    this.lightingLayer.addChild(this.uvTintOverlay)
+
     app.stage.addChild(this.root)
     app.stage.eventMode = 'passive'
 
     this.createScanlines()
     this.subscribeToStore()
+  }
+
+  private makeOverlay(tint: number, alpha: number): Sprite {
+    const s = new Sprite(Texture.WHITE)
+    s.width = VP.w
+    s.height = VP.h
+    s.tint = tint
+    s.alpha = alpha
+    s.eventMode = 'none'
+    return s
   }
 
   private createScanlines() {
@@ -101,6 +141,7 @@ export class GameScene {
     this.unsubs.push(
       store.sub(sessionAtom, () => {
         const session = store.get(sessionAtom)
+        const save = store.get(saveAtom)
         const visible = session.screen === 'cameras'
         this.root.visible = visible
         if (visible) {
@@ -110,7 +151,8 @@ export class GameScene {
           } else {
             this.rebuildCats(session.camera)
           }
-          this.updateLighting(session.uv)
+          const ws = worldState(save, session)
+          this.updateLighting(session.uv, ws.blackout ?? false)
         }
       }),
     )
@@ -118,8 +160,11 @@ export class GameScene {
     this.unsubs.push(
       store.sub(saveAtom, () => {
         const session = store.get(sessionAtom)
+        const save = store.get(saveAtom)
         if (session.screen === 'cameras') {
           this.updateCamera(session.camera)
+          const ws = worldState(save, session)
+          this.updateLighting(session.uv, ws.blackout ?? false)
         }
       }),
     )
@@ -201,22 +246,26 @@ export class GameScene {
     this.prevView = view
   }
 
-  // Manages lightingLayer contents: UV tint overlay (blackout overlays added in step 3)
-  private updateLighting(uv: boolean) {
-    if (uv) {
-      if (!this.uvOverlay) {
-        const g = new Sprite(Texture.WHITE)
-        g.width = VP.w
-        g.height = VP.h
-        g.tint = 0x6e46ff
-        g.alpha = 0.28
-        this.uvOverlay = g
-        this.lightingLayer.addChild(this.uvOverlay)
+  private updateLighting(uv: boolean, blackout: boolean) {
+    const prevBlackout = this.blackoutAlphaTarget > 0
+
+    if (blackout) {
+      this.blackoutAlphaTarget = uv ? BLACKOUT_ALPHA_UV : BLACKOUT_ALPHA_NO_UV
+      this.blackoutFadeSpeed = 999 // snap on (sfx:blackout signals it)
+      this.uvTintAlphaTarget = uv ? UV_TINT_ALPHA_BLACKOUT : 0
+    } else {
+      if (prevBlackout) {
+        // Blackout just ended — fade out slowly
+        this.blackoutAlphaTarget = 0
+        this.blackoutFadeSpeed = 1 / BLACKOUT_END_SECS
+      } else {
+        this.blackoutAlphaTarget = 0
+        this.blackoutFadeSpeed = 999
       }
-    } else if (this.uvOverlay) {
-      this.uvOverlay.destroy()
-      this.uvOverlay = null
+      this.uvTintAlphaTarget = uv ? UV_TINT_ALPHA_NORMAL : 0
     }
+
+    this.uvFadeSpeed = 1 / UV_FADE_SECS
   }
 
   update(delta: number) {
@@ -227,6 +276,16 @@ export class GameScene {
       this.noiseFilter.noise = this.noiseAlpha * 0.6
       this.noiseFilter.seed = Math.random()
     }
+
+    // Smooth overlay transitions
+    this.blackoutAlphaCurrent = lerpTowards(
+      this.blackoutAlphaCurrent, this.blackoutAlphaTarget, this.blackoutFadeSpeed, dtSec,
+    )
+    this.uvTintAlphaCurrent = lerpTowards(
+      this.uvTintAlphaCurrent, this.uvTintAlphaTarget, this.uvFadeSpeed, dtSec,
+    )
+    if (this.blackoutOverlay) this.blackoutOverlay.alpha = this.blackoutAlphaCurrent
+    if (this.uvTintOverlay) this.uvTintOverlay.alpha = this.uvTintAlphaCurrent
 
     if (this.renderer && this.renderCtx) {
       this.renderer.tick(dtSec, this.renderCtx)
@@ -242,4 +301,11 @@ export class GameScene {
     this.prevView = null
     this.root.destroy({ children: true })
   }
+}
+
+function lerpTowards(current: number, target: number, speed: number, dt: number): number {
+  if (current === target) return current
+  const step = speed * dt
+  if (Math.abs(target - current) <= step) return target
+  return current + Math.sign(target - current) * step
 }
