@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useAtomValue } from 'jotai'
+import { Assets } from 'pixi.js'
 import { store } from '../../state/store'
 import { saveAtom } from '../../state/atoms'
 import { dispatch } from '../../game/dispatch'
 import { engine } from '../../audio/AudioEngine'
 import type { AudioManifest } from '../../audio/AudioEngine'
 import { CATS } from '../../data/cats'
-import { cameraTrack, songStem, sfx as sfxUrl } from '../../assets/registry'
+import { cameraTrack, songStem, sfx as sfxUrl, catFrame, background, portrait } from '../../assets/registry'
 import { Button } from '../ui/Button'
 
 export function Menu() {
@@ -23,14 +24,36 @@ export function Menu() {
     async function load() {
       setLoading(true)
       const enabledCats = CATS.filter((c) => c.enabled)
+
+      // Phase 1: audio (0 → 50%)
       const manifest: AudioManifest = {
         camera: Object.fromEntries(enabledCats.map((c) => [c.id, cameraTrack(c.id)])),
         song: Object.fromEntries(enabledCats.map((c) => [c.id, songStem(c.id)])),
         sfx: { horn: sfxUrl('horn'), found: sfxUrl('found') },
       }
       await engine.load(manifest, (done, total) => {
-        setProgress(Math.round((done / total) * 100))
+        setProgress(Math.round((done / total) * 50))
       })
+
+      // Phase 2: images (50 → 100%)
+      const imageUrls = [
+        ...enabledCats.flatMap((c) => c.anim.frames.map((f) => catFrame(c.id, f))),
+        background('stage'),
+        background('office'),
+        portrait('closed'),
+        portrait('open'),
+      ].filter(Boolean) as string[]
+      const total = imageUrls.length
+      let done = 0
+      await Promise.all(
+        imageUrls.map((url) =>
+          Assets.load(url as string).then(() => {
+            done++
+            setProgress(50 + Math.round((done / total) * 50))
+          }),
+        ),
+      )
+
       setLoaded(true)
       setLoading(false)
     }
