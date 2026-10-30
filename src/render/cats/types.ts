@@ -3,7 +3,7 @@ import type { CatView } from '../../game/types'
 import type { CatConfig } from '../../data/cats'
 
 export interface RenderCtx {
-  container: Container
+  layers: { world: Container; emissive: Container }
   cat: CatConfig
   loadTexture: (url: string) => Promise<Texture>
 }

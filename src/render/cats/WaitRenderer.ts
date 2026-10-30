@@ -159,7 +159,7 @@ export class WaitRenderer implements CatRenderer {
   }
 
   private createCatSprite(clickable: boolean, ctx: RenderCtx): CatSprite {
-    const { cat, container, loadTexture } = ctx
+    const { cat, layers, loadTexture } = ctx
     const frameUrl = catFrame(cat.id, cat.anim.frames[0] ?? 'body')
 
     const sprite = new CatSprite(cat.id, [Texture.WHITE], cat.anim, () => {
@@ -170,7 +170,7 @@ export class WaitRenderer implements CatRenderer {
     sprite.scale.set(this.catBaseScale)
     sprite.tint = parseInt(cat.tint.replace('#', ''), 16)
     sprite.eventMode = clickable ? 'static' : 'none'
-    container.addChild(sprite)
+    layers.world.addChild(sprite)
     this.catSprite = sprite
 
     loadTexture(frameUrl)

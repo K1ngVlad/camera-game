@@ -26,6 +26,11 @@ export class GameScene {
   private app: Application
   private root: Container
   private camContainer: Container
+  // Explicit layer order inside camContainer (all at VP-local coords):
+  private bgLayer: Container      // 1: camera background
+  private worldLayer: Container   // 2: props and cat sprites (darkened in blackout)
+  private lightingLayer: Container // 3: dark blackout overlay + UV tint
+  private emissiveLayer: Container // 4: self-lit elements (pumpkin glow, cat in UV)
   private bgSprite: Sprite | null = null
   private noiseFilter: NoiseFilter
   private scanlines: TilingSprite | null = null
@@ -50,6 +55,16 @@ export class GameScene {
 
     this.noiseFilter = new NoiseFilter({ noise: 0 })
     this.camContainer.filters = [this.noiseFilter]
+
+    // Build layer stack
+    this.bgLayer = new Container()
+    this.worldLayer = new Container()
+    this.lightingLayer = new Container()
+    this.emissiveLayer = new Container()
+    this.camContainer.addChild(this.bgLayer)
+    this.camContainer.addChild(this.worldLayer)
+    this.camContainer.addChild(this.lightingLayer)
+    this.camContainer.addChild(this.emissiveLayer)
 
     app.stage.addChild(this.root)
     app.stage.eventMode = 'passive'
@@ -95,7 +110,7 @@ export class GameScene {
           } else {
             this.rebuildCats(session.camera)
           }
-          this.updateUV(session.uv)
+          this.updateLighting(session.uv)
         }
       }),
     )
@@ -131,7 +146,7 @@ export class GameScene {
     this.bgSprite = new Sprite(tex)
     this.bgSprite.width = VP.w
     this.bgSprite.height = VP.h
-    this.camContainer.addChildAt(this.bgSprite, 0)
+    this.bgLayer.addChild(this.bgSprite)
 
     this.rebuildCats(cameraId)
   }
@@ -170,7 +185,7 @@ export class GameScene {
     }
 
     const ctx: RenderCtx = {
-      container: this.camContainer,
+      layers: { world: this.worldLayer, emissive: this.emissiveLayer },
       cat,
       loadTexture: (url) => this.loadTexture(url),
     }
@@ -186,7 +201,8 @@ export class GameScene {
     this.prevView = view
   }
 
-  private updateUV(uv: boolean) {
+  // Manages lightingLayer contents: UV tint overlay (blackout overlays added in step 3)
+  private updateLighting(uv: boolean) {
     if (uv) {
       if (!this.uvOverlay) {
         const g = new Sprite(Texture.WHITE)
@@ -195,7 +211,7 @@ export class GameScene {
         g.tint = 0x6e46ff
         g.alpha = 0.28
         this.uvOverlay = g
-        this.camContainer.addChild(this.uvOverlay)
+        this.lightingLayer.addChild(this.uvOverlay)
       }
     } else if (this.uvOverlay) {
       this.uvOverlay.destroy()
@@ -227,4 +243,3 @@ export class GameScene {
     this.root.destroy({ children: true })
   }
 }
-
