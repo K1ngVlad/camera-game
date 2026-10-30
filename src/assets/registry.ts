@@ -66,6 +66,9 @@ function pickAudio(glob: Record<string, string>, filename: string): string | nul
 // ── placeholder fallback paths (served from public/) ─────────────────────────
 
 const PH_CAT_A = './assets/placeholder/cat_a.svg'
+const PH_PROPS: Record<string, string> = {
+  bin: './assets/placeholder/bin.svg',
+}
 const PH_AUDIO_CAM = (id: string) => `./assets/audio/placeholder/camera/${id}.wav`
 const PH_AUDIO_SONG = (id: string) => `./assets/audio/placeholder/song/${id}.wav`
 const PH_AUDIO_SFX = (id: string) => `./assets/audio/placeholder/sfx/${id}.wav`
@@ -92,11 +95,11 @@ export function catHasArt(catId: CatId): boolean {
   return Object.keys(catGlob).some((k) => k.startsWith(`./cats/${catId}/`))
 }
 
-/** URL for a prop image. */
+/** URL for a prop image. Falls back to a named placeholder SVG if available. */
 export function prop(name: string): string {
   const url = propGlob[`./props/${name}.png`]
   track(`props/${name}.png`, !!url)
-  return url ?? PH_CAT_A
+  return url ?? PH_PROPS[name] ?? PH_CAT_A
 }
 
 /** URL for an assistant portrait frame ('closed' or 'open'). */

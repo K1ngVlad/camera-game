@@ -43,7 +43,7 @@ function ensurePuzzle(
 
 function dispatchBehaviorEvent(
   session: SessionState,
-  found: CatId[],
+  _found: CatId[],
   event: import('./types').BehaviorEvent,
 ): SessionState {
   if (!session.puzzle) return session
