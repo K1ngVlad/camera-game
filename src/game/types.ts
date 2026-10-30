@@ -33,10 +33,10 @@ export type MusicPosition = {
 
 export type Action =
   | { type: 'openScreen'; screen: Screen }
-  | { type: 'selectCamera'; camera: number }
+  | { type: 'selectCamera'; camera: number; now?: number }
   | { type: 'horn' }
   | { type: 'toggleUV' }
-  | { type: 'clickCat'; target: string }
+  | { type: 'clickCat'; target: string; now?: number }
   | { type: 'dialogueNext' }
   | { type: 'dialogueSkip' }
   | { type: 'closePopup' }

@@ -53,7 +53,7 @@ export function reduce(
     }
 
     case 'selectCamera': {
-      const newHint = onCameraSwitch(session.hint, Date.now() / 1000)
+      const newHint = onCameraSwitch(session.hint, action.now ?? 0)
       return {
         save,
         session: { ...session, camera: action.camera, hint: newHint },
@@ -87,7 +87,7 @@ export function reduce(
       // Cat found!
       const newFound: CatId[] = [...save.found, current]
       const newSave: SaveData = { version: 1, found: newFound }
-      const newHint = resetHint(Date.now() / 1000)
+      const newHint = resetHint(action.now ?? 0)
 
       effects.push({ type: 'sfx', id: 'found' })
       effects.push({ type: 'popup', catId: current })

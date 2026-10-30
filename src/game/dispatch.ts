@@ -7,7 +7,11 @@ import { engine } from '../audio/AudioEngine'
 export function dispatch(action: Action): void {
   const save = store.get(saveAtom)
   const session = store.get(sessionAtom)
-  const { save: newSave, session: newSession, effects } = reduce(save, session, action)
+  const withNow =
+    action.type === 'selectCamera' || action.type === 'clickCat'
+      ? { ...action, now: Date.now() / 1000 }
+      : action
+  const { save: newSave, session: newSession, effects } = reduce(save, session, withNow)
 
   store.set(saveAtom, newSave)
   store.set(sessionAtom, newSession)

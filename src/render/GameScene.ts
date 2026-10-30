@@ -1,4 +1,12 @@
-import { Container, Sprite, ColorMatrixFilter, NoiseFilter, type Application } from 'pixi.js'
+import {
+  Container,
+  Sprite,
+  TilingSprite,
+  NoiseFilter,
+  Graphics,
+  RenderTexture,
+  type Application,
+} from 'pixi.js'
 import { store } from '../state/store'
 import { saveAtom, sessionAtom } from '../state/atoms'
 import { getCameraBackground } from './cameraBackground'
@@ -19,7 +27,7 @@ export class GameScene {
   private camContainer: Container
   private bgSprite: Sprite | null = null
   private noiseFilter: NoiseFilter
-  private scanlineFilter: ColorMatrixFilter
+  private scanlines: TilingSprite | null = null
   private uvOverlay: Sprite | null = null
   private catSprites: Map<string, CatSprite> = new Map()
   private currentCameraId = -1
@@ -27,6 +35,7 @@ export class GameScene {
   private texturesLoaded = false
   private texA: Texture | null = null
   private texB: Texture | null = null
+  private unsubs: (() => void)[] = []
 
   constructor(app: Application) {
     this.app = app
@@ -38,17 +47,30 @@ export class GameScene {
     this.camContainer.y = VP.y
 
     this.noiseFilter = new NoiseFilter({ noise: 0 })
-    this.scanlineFilter = new ColorMatrixFilter()
-
-    // Scanlines: darken every other row
-    this.camContainer.filters = [this.scanlineFilter, this.noiseFilter]
+    this.camContainer.filters = [this.noiseFilter]
 
     app.stage.addChild(this.root)
-    // Ensure Pixi event system is active so cat sprites receive pointer events
     app.stage.eventMode = 'passive'
 
+    this.createScanlines()
     this.loadTextures().catch(console.error)
     this.subscribeToStore()
+  }
+
+  private createScanlines() {
+    // 1×4 texture: top 2 rows dark, bottom 2 rows transparent → subtle CRT scanline effect
+    const g = new Graphics()
+    g.rect(0, 0, 1, 2).fill({ color: 0x000000, alpha: 1 })
+    const tex = RenderTexture.create({ width: 1, height: 4 })
+    this.app.renderer.render({ container: g, target: tex })
+    g.destroy()
+
+    this.scanlines = new TilingSprite({ texture: tex, width: VP.w, height: VP.h })
+    this.scanlines.x = VP.x
+    this.scanlines.y = VP.y
+    this.scanlines.alpha = 0.12
+    this.scanlines.eventMode = 'none'
+    this.root.addChild(this.scanlines)
   }
 
   private async loadTextures() {
@@ -63,25 +85,29 @@ export class GameScene {
   }
 
   private subscribeToStore() {
-    store.sub(sessionAtom, () => {
-      const session = store.get(sessionAtom)
-      const visible = session.screen === 'cameras'
-      this.root.visible = visible
-      if (visible) {
-        if (session.camera !== this.currentCameraId) {
-          this.triggerNoise()
+    this.unsubs.push(
+      store.sub(sessionAtom, () => {
+        const session = store.get(sessionAtom)
+        const visible = session.screen === 'cameras'
+        this.root.visible = visible
+        if (visible) {
+          if (session.camera !== this.currentCameraId) {
+            this.triggerNoise()
+            this.updateCamera(session.camera)
+          }
+          this.updateUV(session.uv)
+        }
+      }),
+    )
+
+    this.unsubs.push(
+      store.sub(saveAtom, () => {
+        const session = store.get(sessionAtom)
+        if (session.screen === 'cameras') {
           this.updateCamera(session.camera)
         }
-        this.updateUV(session.uv)
-      }
-    })
-
-    store.sub(saveAtom, () => {
-      const session = store.get(sessionAtom)
-      if (session.screen === 'cameras') {
-        this.updateCamera(session.camera)
-      }
-    })
+      }),
+    )
   }
 
   private triggerNoise() {
@@ -91,7 +117,6 @@ export class GameScene {
   private updateCamera(cameraId: number) {
     this.currentCameraId = cameraId
 
-    // Background
     if (this.bgSprite) {
       this.bgSprite.destroy()
       this.bgSprite = null
@@ -102,12 +127,10 @@ export class GameScene {
     this.bgSprite.height = VP.h
     this.camContainer.addChildAt(this.bgSprite, 0)
 
-    // Rebuild cat sprites for current camera
     this.rebuildCats(cameraId)
   }
 
   private rebuildCats(cameraId: number) {
-    // Remove old cat sprites
     for (const sprite of this.catSprites.values()) {
       sprite.destroy()
     }
@@ -138,16 +161,13 @@ export class GameScene {
         dispatch({ type: 'clickCat', target: catId })
       })
 
-      // Position cat in viewport
       sprite.x = VP.w * 0.5
       sprite.y = VP.h * 0.85
       sprite.scale.set(0.6)
 
-      // Tint to distinguish cats
       const hex = parseInt(cat.tint.replace('#', ''), 16)
       sprite.tint = hex
 
-      // Enable pointer events only if clickable
       sprite.eventMode = view.clickable ? 'static' : 'none'
 
       this.camContainer.addChild(sprite)
@@ -173,14 +193,12 @@ export class GameScene {
   }
 
   update(delta: number) {
-    // Fade out noise: noiseAlpha 1→0 over ~20 frames
     if (this.noiseAlpha > 0) {
       this.noiseAlpha = Math.max(0, this.noiseAlpha - delta * 0.05)
       this.noiseFilter.noise = this.noiseAlpha * 0.6
       this.noiseFilter.seed = Math.random()
     }
 
-    // Update cat animations
     const t = performance.now() / 1000
     for (const [id, sprite] of this.catSprites) {
       const cat = CAT_MAP.get(id as import('../data/cats').CatId)
@@ -192,6 +210,8 @@ export class GameScene {
   }
 
   destroy() {
+    this.unsubs.forEach((f) => f())
+    this.unsubs = []
     for (const sprite of this.catSprites.values()) sprite.destroy()
     this.catSprites.clear()
     this.root.destroy({ children: true })
