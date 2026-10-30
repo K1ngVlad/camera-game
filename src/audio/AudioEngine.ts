@@ -87,6 +87,12 @@ export class AudioEngine {
   private songNodes = new Map<CatId, SongNodes>()
   private songT0 = 0
   private songPlaying = false
+  private lastSongState: {
+    playing: boolean
+    busGain: number
+    cutoff: number
+    gains: Partial<Record<CatId, number>>
+  } | null = null
 
   private _started = false
 
@@ -329,6 +335,17 @@ export class AudioEngine {
     this._resetBeatDet('cam', now, catId)
   }
 
+  restartSong(fadeSec = 0.3): void {
+    if (!this.lastSongState || !this.ctx) return
+    const state = this.lastSongState
+    const ctx = this.ctx
+    const now = ctx.currentTime
+    this.songBus?.gain.linearRampToValueAtTime(0, now + fadeSec)
+    setTimeout(() => {
+      this.setSong({ ...state, playing: true, restart: true })
+    }, fadeSec * 1000 + 50)
+  }
+
   setSong(state: {
     playing: boolean
     restart?: boolean
@@ -337,6 +354,7 @@ export class AudioEngine {
     gains: Partial<Record<CatId, number>>
   }): void {
     if (!this.ctx || !this.songBus || !this.limiter) return
+    this.lastSongState = { playing: state.playing, busGain: state.busGain, cutoff: state.cutoff, gains: state.gains }
     const ctx = this.ctx
     const now = ctx.currentTime
     const TC = 0.05

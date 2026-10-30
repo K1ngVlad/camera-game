@@ -54,6 +54,17 @@ describe('reduce - clickCat', () => {
   })
 })
 
+describe('reduce - resetProgress', () => {
+  it('clears found cats and resets session to defaults', () => {
+    const save = { version: 1 as const, found: ['drummer' as const] }
+    const session = { ...defaultSession(), screen: 'cameras' as const, camera: 6 }
+    const result = reduce(save, session, { type: 'resetProgress' })
+    expect(result.save.found).toHaveLength(0)
+    expect(result.session.screen).toBe('menu')
+    expect(result.session.camera).toBe(1)
+  })
+})
+
 describe('reduce - full pass (5 cats)', () => {
   it('finds all 5 enabled cats in order', () => {
     let save = DEFAULT_SAVE

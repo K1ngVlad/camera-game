@@ -29,4 +29,8 @@ export function dispatch(action: Action): void {
         break
     }
   }
+
+  if (action.type === 'resetProgress') {
+    engine.restartSong(0.3)
+  }
 }
