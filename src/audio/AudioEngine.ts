@@ -118,41 +118,59 @@ export class AudioEngine {
 
     await Promise.all(
       entries.map(async ([id, url, kind]) => {
-        const resp = await fetch(url)
-        const arrayBuf = await resp.arrayBuffer()
-        const offline = new OfflineAudioContext(1, 1, 44100)
-        const buffer = await offline.decodeAudioData(arrayBuf)
-        totalDecodedBytes += buffer.numberOfChannels * buffer.length * 4
+        try {
+          const resp = await fetch(url)
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+          const arrayBuf = await resp.arrayBuffer()
+          const offline = new OfflineAudioContext(1, 1, 44100)
+          const buffer = await offline.decodeAudioData(arrayBuf)
+          totalDecodedBytes += buffer.numberOfChannels * buffer.length * 4
 
-        if (kind === 'sfx') {
-          this.sfxBuffers.set(id, buffer)
-        } else {
-          let timing: TrackTiming
-          if (kind === 'cam') {
-            const catId = id.slice(4) as CatId
-            const { timing: camTiming, mismatch, computedBars } = computeCamTiming(
-              buffer.duration,
-              CAMERA_TIMING[catId] ?? {},
-            )
-            if (mismatch) {
-              const spb = (camTiming.beatsPerBar * 60) / camTiming.bpm
-              console.warn(
-                `[audio] cam:${catId}: expected ${computedBars} bars` +
-                  ` (${(computedBars * spb).toFixed(3)}s),` +
-                  ` got ${buffer.duration.toFixed(3)}s`,
-              )
-            }
-            timing = camTiming
+          if (kind === 'sfx') {
+            this.sfxBuffers.set(id, buffer)
           } else {
-            timing = SONG_TIMING
+            let timing: TrackTiming
+            if (kind === 'cam') {
+              const catId = id.slice(4) as CatId
+              const { timing: camTiming, mismatch, computedBars } = computeCamTiming(
+                buffer.duration,
+                CAMERA_TIMING[catId] ?? {},
+              )
+              if (mismatch) {
+                const spb = (camTiming.beatsPerBar * 60) / camTiming.bpm
+                console.warn(
+                  `[audio] cam:${catId}: expected ${computedBars} bars` +
+                    ` (${(computedBars * spb).toFixed(3)}s),` +
+                    ` got ${buffer.duration.toFixed(3)}s`,
+                )
+              }
+              timing = camTiming
+            } else {
+              timing = SONG_TIMING
+            }
+            const channels: Float32Array[] = []
+            for (let c = 0; c < buffer.numberOfChannels; c++) {
+              channels.push(buffer.getChannelData(c))
+            }
+            const envelope = computeEnvelope(channels, buffer.sampleRate)
+            const onsets = detectOnsets(envelope.values)
+            this.trackData.set(id, { buffer, timing, envelope, onsets })
           }
-          const channels: Float32Array[] = []
-          for (let c = 0; c < buffer.numberOfChannels; c++) {
-            channels.push(buffer.getChannelData(c))
+        } catch (err) {
+          console.error(`[audio] failed to load ${id} (${url}): ${err}`)
+          if (kind !== 'sfx') {
+            // Insert a 1-second silent placeholder so the track slot exists
+            const sampleRate = 44100
+            const silentBuffer = new AudioBuffer({ numberOfChannels: 1, length: sampleRate, sampleRate })
+            const timing: TrackTiming =
+              kind === 'cam'
+                ? { bpm: 120, beatsPerBar: 4, bars: 4, loopStartBar: 0, loopEndBar: 4 }
+                : SONG_TIMING
+            const silence = new Float32Array(sampleRate)
+            const envelope = computeEnvelope([silence], sampleRate)
+            const onsets = detectOnsets(envelope.values)
+            this.trackData.set(id, { buffer: silentBuffer, timing, envelope, onsets })
           }
-          const envelope = computeEnvelope(channels, buffer.sampleRate)
-          const onsets = detectOnsets(envelope.values)
-          this.trackData.set(id, { buffer, timing, envelope, onsets })
         }
 
         loaded++
