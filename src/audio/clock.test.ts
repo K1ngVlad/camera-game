@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { positionAt, createBeatDetector } from './clock'
-import type { MusicConfig } from './clock'
+import { positionAt, createBeatDetector, trackTime } from './clock'
+import type { MusicConfig, TrackTiming } from './clock'
 
 const cfg: MusicConfig = { bpm: 120, beatsPerBar: 4, bars: 16 }
 const SPB = 60 / 120 // 0.5 s per beat at 120 BPM
@@ -51,6 +51,46 @@ describe('positionAt', () => {
       expect(p.loopPhase).toBeGreaterThanOrEqual(0)
       expect(p.loopPhase).toBeLessThan(1)
     }
+  })
+})
+
+describe('trackTime', () => {
+  const BAR = (4 * 60) / 120  // 2 s per bar at 120 BPM 4/4
+
+  it('full-file loop (loopStartBar=0): wraps at loopEnd', () => {
+    const t: TrackTiming = { bpm: 120, beatsPerBar: 4, bars: 4, loopStartBar: 0, loopEndBar: 4 }
+    expect(trackTime(0, t)).toBeCloseTo(0, 5)
+    expect(trackTime(BAR * 2, t)).toBeCloseTo(BAR * 2, 5)
+    // At exactly loopEnd → wraps to 0
+    expect(trackTime(BAR * 4, t)).toBeCloseTo(0, 5)
+    // Multiple loops
+    expect(trackTime(BAR * 9, t)).toBeCloseTo(BAR * 1, 5)
+  })
+
+  it('intro (loopStartBar=2): plays intro once, then loops', () => {
+    const t: TrackTiming = { bpm: 120, beatsPerBar: 4, bars: 8, loopStartBar: 2, loopEndBar: 8 }
+    // During intro elapsed < introEnd
+    expect(trackTime(0, t)).toBeCloseTo(0, 5)
+    expect(trackTime(BAR, t)).toBeCloseTo(BAR, 5)
+    // At loopStart = 2 bars
+    expect(trackTime(BAR * 2, t)).toBeCloseTo(BAR * 2, 5)
+    // One full loop past intro end
+    expect(trackTime(BAR * 2 + BAR * 6, t)).toBeCloseTo(BAR * 2, 5)
+    // Halfway through second loop
+    expect(trackTime(BAR * 2 + BAR * 6 + BAR * 3, t)).toBeCloseTo(BAR * 2 + BAR * 3, 5)
+  })
+
+  it('handles elapsed just before loopEnd boundary', () => {
+    const t: TrackTiming = { bpm: 120, beatsPerBar: 4, bars: 4 }
+    const loopEnd = 4 * BAR
+    expect(trackTime(loopEnd - 0.001, t)).toBeCloseTo(loopEnd - 0.001, 3)
+    expect(trackTime(loopEnd + 0.001, t)).toBeCloseTo(0.001, 3)
+  })
+
+  it('defaults: loopStartBar=0, loopEndBar=bars', () => {
+    const t: TrackTiming = { bpm: 120, beatsPerBar: 4, bars: 4 }
+    expect(trackTime(0, t)).toBeCloseTo(0, 5)
+    expect(trackTime(4 * BAR, t)).toBeCloseTo(0, 5)
   })
 })
 
