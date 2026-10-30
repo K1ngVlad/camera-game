@@ -3,20 +3,19 @@ import { Application } from 'pixi.js'
 import { engine } from '../audio/AudioEngine'
 
 interface Props {
-  onReady: (app: Application) => void
+  onReady: (app: Application) => (() => void) | void
 }
 
 export function PixiHost({ onReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const appRef = useRef<Application | null>(null)
-  const initializedRef = useRef(false)
 
   useEffect(() => {
-    // StrictMode mounts twice in dev — guard against double-init
-    if (initializedRef.current) return
-    initializedRef.current = true
+    // cancelled is local to each effect invocation — StrictMode-safe
+    let cancelled = false
+    let cleanupFromReady: (() => void) | undefined
+    let ro: ResizeObserver | null = null
+    let localApp: Application | null = null
 
-    const container = containerRef.current!
     const app = new Application()
 
     app.init({
@@ -27,15 +26,17 @@ export function PixiHost({ onReady }: Props) {
       backgroundColor: 0x12111A,
       antialias: false,
     }).then(() => {
-      if (!initializedRef.current) {
+      // App initialized after unmount — destroy immediately and bail
+      if (cancelled) {
         app.destroy(true)
         return
       }
-      appRef.current = app
+
+      localApp = app
+      const container = containerRef.current!
       container.appendChild(app.canvas)
 
-      // Letterbox: fit canvas into container preserving 16:9
-      const ro = new ResizeObserver(() => {
+      ro = new ResizeObserver(() => {
         const { clientWidth: w, clientHeight: h } = container
         const scale = Math.min(w / 1280, h / 720)
         const cw = Math.round(1280 * scale)
@@ -48,31 +49,35 @@ export function PixiHost({ onReady }: Props) {
       })
       ro.observe(container)
 
-      // Drive audio engine update from Pixi ticker
       app.ticker.add(() => engine.update())
 
-      onReady(app)
-      ;(app as Application & { _ro?: ResizeObserver })._ro = ro
+      const result = onReady(app)
+      if (typeof result === 'function') cleanupFromReady = result
     })
 
     return () => {
-      initializedRef.current = false
-      const a = appRef.current
-      if (a) {
-        const ro = (a as Application & { _ro?: ResizeObserver })._ro
-        ro?.disconnect()
-        a.destroy(true)
-        appRef.current = null
+      cancelled = true
+      cleanupFromReady?.()
+      ro?.disconnect()
+      if (localApp) {
+        localApp.destroy(true)
+        localApp = null
       }
     }
-  // onReady is intentionally excluded — ref-stable callers should use useCallback
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // onReady is stable (useCallback with [] in Sandbox) — including in deps
+  // ensures the rule is satisfied without causing extra re-runs
+  }, [onReady])
 
   return (
     <div
       ref={containerRef}
-      style={{ position: 'relative', width: '100%', height: '100%', background: '#12111A', overflow: 'hidden' }}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        background: '#12111A',
+        overflow: 'hidden',
+      }}
     />
   )
 }
