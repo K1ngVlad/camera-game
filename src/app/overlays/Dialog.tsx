@@ -4,6 +4,7 @@ import { store } from '../../state/store'
 import { dialogueAtom } from '../../state/selectors'
 import { dispatch } from '../../game/dispatch'
 import { ASSISTANT_NAME } from '../../data/dialogues'
+import { Puppet } from '../ui/Puppet'
 
 const CHARS_PER_SEC = 40
 
@@ -106,22 +107,7 @@ export function Dialog() {
           }}
         >
           {/* Portrait */}
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: 12,
-              border: '3px solid var(--accent)',
-              background: 'var(--panel)',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 28,
-            }}
-          >
-            🐱
-          </div>
+          <Puppet typing={typing} typedText={displayed} />
 
           {/* Text */}
           <div style={{ flex: 1, minWidth: 0 }}>
