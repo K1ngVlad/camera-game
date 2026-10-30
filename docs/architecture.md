@@ -88,6 +88,8 @@ interface CatConfig {
   camera: number
   behavior: BehaviorConfig  // discriminated union: {type:'static'}|{type:'hornReveal'}|{type:'wait';bars:number}|…
   unlocks: { cameras: number[]; tools: Tool[] }
+  grantsOnStart?: Tool[]          // инструменты, доступные пока этот кот — текущий (напр. 'uv' для тыквы)
+  onStartSfx?: string             // sfx, воспроизводимый при смене текущего кота на этот
   stagePos: { x: number; y: number; scale?: number }
   stamp?: string
   enabled: boolean
@@ -134,9 +136,10 @@ interface Behavior<C, S> {
 // CatView
 interface CatView {
   camera: number
-  catState: string   // 'visible' | 'hidden' | 'revealed' | 'out' | 'peek' | 'in'
+  catState: string   // 'visible' | 'hidden' | 'revealed' | 'out' | 'peek' | 'in' | 'dark' | 'lit'
   clickable: boolean
   props: Record<string, 'shown' | 'hidden'>
+  world?: { blackout?: boolean }  // глобальные состояния мира, производные от этого кота
 }
 
 // BehaviorEvent
@@ -159,6 +162,37 @@ type BehaviorEvent =
 | `combo` | Bongo Cat | клаксон на камере, где совпали признаки |
 
 Новый кот на существующем поведении — только запись в `cats.ts` и спрайты. Каждое поведение покрывается тестами Vitest.
+
+## Рендереры котов (`src/render/cats/`)
+
+`GameScene` делегирует всю отрисовку кота объекту `CatRenderer`, выбираемому по `behavior.type`:
+
+```ts
+interface RenderCtx {
+  layers: {
+    world: Container      // пропсы и коты (темнеет в блэкауте)
+    emissive: Container   // светится само: свечение тыквы, кот в УФ
+  }
+  cat: CatConfig
+  loadTexture: (url: string) => Promise<Texture>
+}
+
+interface CatRenderer {
+  enter(view: CatView, ctx: RenderCtx): void   // кот появился на текущей камере
+  update(view: CatView, prev: CatView | null, ctx: RenderCtx): void  // смена состояния → запуск твинов
+  tick(dt: number, ctx: RenderCtx): void       // каждый кадр: амплитуда, твины
+  destroy(): void
+}
+```
+
+Кадр камеры состоит из постоянных слоёв (в порядке отрисовки):
+
+1. `bgLayer` — фон камеры
+2. `worldLayer` — пропсы и коты (через `RenderCtx.layers.world`)
+3. `lightingLayer` — тёмный блэкаут-оверлей и фиолетовый УФ-оверлей
+4. `emissiveLayer` — то, что светится само и не затемняется (через `RenderCtx.layers.emissive`)
+
+`worldState(save, session)` в `progression.ts` вычисляет глобальные состояния мира из `CatView` текущего кота. `GameScene` применяет их ко всем камерам.
 
 ## Сохранение
 
