@@ -12,23 +12,15 @@ import {
 import { store } from '../state/store'
 import { saveAtom, sessionAtom } from '../state/atoms'
 import { getCameraBackground } from './cameraBackground'
-import { CatSprite } from './CatSprite'
-import { dispatch } from '../game/dispatch'
-import { CATS, CAT_MAP } from '../data/cats'
-import type { CatId } from '../data/cats'
+import { CATS } from '../data/cats'
 import { getCatView } from '../game/behaviors/index'
 import { currentCat } from '../game/progression'
-import { engine } from '../audio/AudioEngine'
-import { catFrame, prop as propUrl } from '../assets/registry'
 import { CAMERA_VIEWPORT } from '../app/layout'
-import { createTween, easeOutBack, easeInQuad } from './tween'
-import type { Tween } from './tween'
+import { createCatRenderer } from './cats/index'
+import type { CatRenderer, RenderCtx } from './cats/index'
+import type { CatView } from '../game/types'
 
 const VP = CAMERA_VIEWPORT
-
-/** Default cat position within the camera viewport */
-const CAT_X = VP.w * 0.5
-const CAT_Y = VP.h * 0.85
 
 export class GameScene {
   private app: Application
@@ -38,22 +30,14 @@ export class GameScene {
   private noiseFilter: NoiseFilter
   private scanlines: TilingSprite | null = null
   private uvOverlay: Sprite | null = null
-  private catSprites: Map<CatId, CatSprite> = new Map()
-  private propSprites: Map<string, Sprite> = new Map()
   private currentCameraId = -1
-  private prevCatState: string | null = null
-  private catBaseScale = 0.6  // updated once real texture loads
-  // Long Cat (hornReveal) tweens
-  private binRevealTween: Tween | null = null
-  private catRevealTween: Tween | null = null
-  // Keyboard Cat (wait) tweens
-  private waitTween: Tween | null = null
-  private waitTweenFrom = 0    // x position tween starts from
-  private waitTweenTo = 0      // x position tween goes to
-  private walkDone = false     // tracks when walk-in animation finished
   private noiseAlpha = 0
   private textureCache: Map<string, Texture> = new Map()
   private unsubs: (() => void)[] = []
+
+  private renderer: CatRenderer | null = null
+  private renderCtx: RenderCtx | null = null
+  private prevView: CatView | null = null
 
   constructor(app: Application) {
     this.app = app
@@ -109,7 +93,6 @@ export class GameScene {
             this.triggerNoise()
             this.updateCamera(session.camera)
           } else {
-            // Puzzle state may have changed — rebuild cats with transition awareness
             this.rebuildCats(session.camera)
           }
           this.updateUV(session.uv)
@@ -133,7 +116,12 @@ export class GameScene {
 
   private updateCamera(cameraId: number) {
     this.currentCameraId = cameraId
-    this.prevCatState = null  // entering new camera — no transition
+
+    // Reset renderer — entering a new camera always triggers enter(), not update()
+    this.renderer?.destroy()
+    this.renderer = null
+    this.renderCtx = null
+    this.prevView = null
 
     if (this.bgSprite) {
       this.bgSprite.destroy()
@@ -148,203 +136,54 @@ export class GameScene {
     this.rebuildCats(cameraId)
   }
 
-  private clearProps() {
-    for (const s of this.propSprites.values()) s.destroy()
-    this.propSprites.clear()
-    this.binRevealTween = null
-    this.catRevealTween = null
-    this.waitTween = null
-    this.walkDone = false
-  }
-
   private rebuildCats(cameraId: number) {
-    for (const sprite of this.catSprites.values()) {
-      sprite.destroy()
-    }
-    this.catSprites.clear()
-
     const save = store.get(saveAtom)
     const session = store.get(sessionAtom)
-    const current = currentCat(save.found)
+    const currentId = currentCat(save.found)
 
-    if (!current) {
-      this.clearProps()
-      this.prevCatState = null
+    if (!currentId) {
+      this.renderer?.destroy()
+      this.renderer = null
+      this.renderCtx = null
+      this.prevView = null
       return
     }
 
-    for (const cat of CATS) {
-      if (!cat.enabled) continue
-      if (cat.id !== current) continue
-
-      const ctx = { screen: session.screen, camera: session.camera, uv: session.uv }
-      const view = getCatView(cat, session.puzzle?.state, ctx)
-      if (view.camera !== cameraId) {
-        this.clearProps()
-        this.prevCatState = null
-        return
-      }
-
-      const newCatState = view.catState
-      const prev = this.prevCatState
-      const wasHidden = prev === 'hidden'
-
-      if (newCatState === 'hidden') {
-        // Show bin prop, no cat sprite
-        this.clearProps()
-        this.createBinProp()
-
-      } else if (newCatState === 'revealed' && wasHidden) {
-        // Transition: hidden → revealed
-        // Keep existing bin sprite for fade-out tween; create cat at alpha=0
-        const catSprite = this.createCatSprite(cat, false)
-        catSprite.alpha = 0
-        catSprite.scale.set(this.catBaseScale * 0.6)
-        this.binRevealTween = createTween(0.4, easeInQuad)
-        this.catRevealTween = createTween(0.35, easeOutBack)
-
-      } else if (newCatState === 'revealed') {
-        // Entering camera when already revealed
-        this.clearProps()
-        this.createCatSprite(cat, view.clickable)
-
-      } else if (newCatState === 'out') {
-        if (prev === 'in' || prev === 'peek') {
-          // Horn while visible — flee off-screen right
-          const catSprite = this.catSprites.get(cat.id)
-          if (catSprite) {
-            const fromX = catSprite.x
-            this.waitTween = createTween(0.4)
-            this.waitTweenFrom = fromX
-            this.waitTweenTo = VP.w + 200
-            this.walkDone = false
-            catSprite.eventMode = 'none'
-          }
-        } else {
-          // Entering camera already at out — create hidden sprite
-          this.clearProps()
-          const catSprite = this.createCatSprite(cat, false)
-          catSprite.x = VP.w + 200
-          catSprite.visible = false
-          this.waitTween = null
-          this.walkDone = false
-        }
-
-      } else if (newCatState === 'peek') {
-        const PEEK_X = VP.w - 40  // cat center 40px from right edge
-        if (prev === 'out' || prev === null) {
-          // Transition: out → peek (or entering camera already at peek)
-          this.clearProps()
-          const catSprite = this.createCatSprite(cat, false)
-          if (prev === 'out') {
-            // Animate from off-screen to peek position
-            catSprite.x = VP.w + 200
-            catSprite.visible = true
-            this.waitTween = createTween(0.6)
-            this.waitTweenFrom = VP.w + 200
-            this.waitTweenTo = PEEK_X
-          } else {
-            // Already at peek (entered camera)
-            catSprite.x = PEEK_X
-          }
-        }
-        // If prev was already 'peek', no need to re-create sprite (shouldn't happen but safe)
-
-      } else if (newCatState === 'in') {
-        const PEEK_X = VP.w - 40
-        if (prev === 'peek' || prev === 'out') {
-          // Transition: peek/out → in (walk in)
-          this.clearProps()
-          const catSprite = this.createCatSprite(cat, false)
-          catSprite.x = prev === 'peek' ? PEEK_X : VP.w + 200
-          catSprite.visible = true
-          this.waitTween = createTween(1.5)
-          this.waitTweenFrom = catSprite.x
-          this.waitTweenTo = CAT_X
-          this.walkDone = false
-        } else if (prev === 'in' && this.waitTween) {
-          // Horn fired mid walk — flee (this case handled by in→out which triggers with horn)
-        } else {
-          // Entering camera already 'in' — direct final state
-          this.clearProps()
-          const catSprite = this.createCatSprite(cat, view.clickable)
-          catSprite.x = CAT_X
-          this.waitTween = null
-          this.walkDone = true
-        }
-
-      } else {
-        // Fallback (visible, etc.)
-        this.clearProps()
-        this.createCatSprite(cat, view.clickable)
-      }
-
-      this.prevCatState = newCatState
+    const cat = CATS.find((c) => c.enabled && c.id === currentId)
+    if (!cat) {
+      this.renderer?.destroy()
+      this.renderer = null
+      this.renderCtx = null
+      this.prevView = null
+      return
     }
-  }
 
-  private createBinProp() {
-    const url = propUrl('bin')
-    const sprite = new Sprite(Texture.WHITE)
-    sprite.anchor.set(0.5, 1)
-    sprite.x = CAT_X
-    sprite.y = CAT_Y
-    sprite.width = 60
-    sprite.height = 80
-    sprite.tint = 0x44aa77
-    sprite.eventMode = 'none'
-    this.camContainer.addChild(sprite)
-    this.propSprites.set('bin', sprite)
+    const worldCtx = { screen: session.screen, camera: session.camera, uv: session.uv }
+    const view = getCatView(cat, session.puzzle?.state, worldCtx)
 
-    this.loadTexture(url)
-      .then((tex) => {
-        if (!this.propSprites.has('bin')) return
-        sprite.texture = tex
-        sprite.tint = 0xffffff
-        // Preserve anchor-at-bottom sizing
-        const scale = 80 / Math.max(tex.height, 1)
-        sprite.width = tex.width * scale
-        sprite.height = tex.height * scale
-      })
-      .catch(() => { /* placeholder tint remains */ })
-  }
+    if (view.camera !== cameraId) {
+      this.renderer?.destroy()
+      this.renderer = null
+      this.renderCtx = null
+      this.prevView = null
+      return
+    }
 
-  private createCatSprite(cat: typeof CATS[0], clickable: boolean): CatSprite {
-    const catId = cat.id
-    const { anim } = cat
-    const frameUrl = catFrame(catId, anim.frames[0] ?? 'body')
+    const ctx: RenderCtx = {
+      container: this.camContainer,
+      cat,
+      loadTexture: (url) => this.loadTexture(url),
+    }
 
-    const sprite = new CatSprite(catId, [Texture.WHITE], anim, () => {
-      dispatch({ type: 'clickCat', target: catId })
-    })
+    if (!this.renderer) {
+      this.renderCtx = ctx
+      this.renderer = createCatRenderer(cat)
+      this.renderer.enter(view, ctx)
+    } else {
+      this.renderer.update(view, this.prevView, ctx)
+    }
 
-    sprite.x = CAT_X
-    sprite.y = CAT_Y
-    sprite.scale.set(this.catBaseScale)
-
-    const hex = parseInt(cat.tint.replace('#', ''), 16)
-    sprite.tint = hex
-
-    sprite.eventMode = clickable ? 'static' : 'none'
-
-    this.camContainer.addChild(sprite)
-    this.catSprites.set(cat.id, sprite)
-
-    this.loadTexture(frameUrl)
-      .then((tex) => {
-        if (!this.catSprites.has(catId)) return
-        const scale = cat.display.camera / Math.max(tex.height, 1)
-        this.catBaseScale = scale
-        // Only update scale if not mid-tween
-        if (!this.catRevealTween || this.catRevealTween.done) {
-          sprite.scale.set(scale)
-        }
-        sprite.tint = 0xffffff
-        sprite.setTextures([tex])
-      })
-      .catch(() => { /* placeholder remains */ })
-
-    return sprite
+    this.prevView = view
   }
 
   private updateUV(uv: boolean) {
@@ -373,100 +212,19 @@ export class GameScene {
       this.noiseFilter.seed = Math.random()
     }
 
-    const t = performance.now() / 1000
-    const currentCatId = [...this.catSprites.keys()][0] as CatId | undefined
-
-    // Bin trembling animation when in 'hidden' state
-    const binSprite = this.propSprites.get('bin')
-    if (binSprite && currentCatId) {
-      const amp = engine.getAmplitude(`cam:${currentCatId}`)
-      // Shake intensity proportional to amplitude
-      binSprite.x = CAT_X + (Math.random() - 0.5) * amp * 6
-      binSprite.rotation = (Math.random() - 0.5) * amp * 0.07
-    }
-
-    // Reveal transition tweens
-    if (this.binRevealTween && !this.binRevealTween.done) {
-      this.binRevealTween.update(dtSec)
-      if (binSprite) {
-        binSprite.alpha = 1 - this.binRevealTween.value
-        binSprite.scale.y = 1 - this.binRevealTween.value * 0.3
-      }
-      if (this.binRevealTween.done && binSprite) {
-        binSprite.destroy()
-        this.propSprites.delete('bin')
-      }
-    }
-
-    if (this.catRevealTween && !this.catRevealTween.done) {
-      this.catRevealTween.update(dtSec)
-      const catSprite = currentCatId ? this.catSprites.get(currentCatId) : undefined
-      if (catSprite) {
-        const tv = this.catRevealTween.value
-        catSprite.alpha = tv
-        catSprite.scale.set(this.catBaseScale * (0.6 + 0.48 * tv))
-      }
-      if (this.catRevealTween.done) {
-        const catSprite2 = currentCatId ? this.catSprites.get(currentCatId) : undefined
-        if (catSprite2) {
-          catSprite2.alpha = 1
-          catSprite2.scale.set(this.catBaseScale)
-          catSprite2.eventMode = 'static'
-        }
-      }
-    }
-
-    // Wait (Keyboard Cat) tween: slide cat horizontally
-    if (this.waitTween) {
-      const catSprite = currentCatId ? this.catSprites.get(currentCatId) : undefined
-      if (catSprite) {
-        if (!this.waitTween.done) {
-          this.waitTween.update(dtSec)
-          catSprite.x = this.waitTweenFrom + (this.waitTweenTo - this.waitTweenFrom) * this.waitTween.value
-        }
-        if (this.waitTween.done && !this.walkDone) {
-          catSprite.x = this.waitTweenTo
-          if (this.waitTweenTo === CAT_X) {
-            // Walk-in complete
-            this.walkDone = true
-            catSprite.eventMode = 'static'
-          }
-        }
-      }
-    }
-
-    // Peek sway animation
-    if (this.prevCatState === 'peek' && (!this.waitTween || this.waitTween.done)) {
-      const catSprite = currentCatId ? this.catSprites.get(currentCatId) : undefined
-      if (catSprite) catSprite.rotation = Math.sin(t * 3) * 0.07
-    }
-
-    // Beat-synced walk rotation during walk-in tween
-    if (this.prevCatState === 'in' && this.waitTween && !this.waitTween.done) {
-      const catSprite = currentCatId ? this.catSprites.get(currentCatId) : undefined
-      if (catSprite) catSprite.rotation = Math.sin(t * 8) * 0.07
-    }
-
-    // Normal amplitude animation for cat sprites
-    for (const [id, sprite] of this.catSprites) {
-      // Skip if mid-reveal-tween
-      if (this.catRevealTween && !this.catRevealTween.done) continue
-      // Skip x/rotation updates if mid-wait-tween (handled above)
-      const midWait = this.waitTween && !this.waitTween.done
-      const cat = CAT_MAP.get(id)
-      if (!cat) continue
-      const amp = engine.getAmplitude(`cam:${id}`)
-      const onset = engine.isOnset(`cam:${id}`)
-      if (!midWait) sprite.update(amp, onset, t)
+    if (this.renderer && this.renderCtx) {
+      this.renderer.tick(dtSec, this.renderCtx)
     }
   }
 
   destroy() {
     this.unsubs.forEach((f) => f())
     this.unsubs = []
-    for (const sprite of this.catSprites.values()) sprite.destroy()
-    this.catSprites.clear()
-    this.clearProps()
+    this.renderer?.destroy()
+    this.renderer = null
+    this.renderCtx = null
+    this.prevView = null
     this.root.destroy({ children: true })
   }
 }
+
