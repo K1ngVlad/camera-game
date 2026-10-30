@@ -22,7 +22,7 @@ interface PuppetProps {
 export function Puppet({ typing, typedText }: PuppetProps) {
   const amplitudeRef = useRef(0)
   const mouthOpenRef = useRef(false)
-  const prevTimeRef = useRef(performance.now())
+  const prevTimeRef = useRef(0)
   const prevTextRef = useRef('')
   const frameRef = useRef<number>(0)
   const [transform, setTransform] = useState('scale(1, 1)')
