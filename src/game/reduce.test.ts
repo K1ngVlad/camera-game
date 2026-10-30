@@ -85,12 +85,23 @@ describe('reduce - full pass (5 cats)', () => {
       save = rScreen.save
       session = rScreen.session
 
-      // hornReveal cats need a horn on their camera before they can be clicked
       const cat = CAT_MAP.get(catId as import('../data/cats').CatId)
+
+      // hornReveal cats need a horn on their camera first
       if (cat?.behavior.type === 'hornReveal') {
         const rHorn = reduce(save, session, { type: 'horn' })
         save = rHorn.save
         session = rHorn.session
+      }
+
+      // wait cats need N bars on their camera
+      if (cat?.behavior.type === 'wait') {
+        const bars = cat.behavior.bars
+        for (let i = 0; i < bars; i++) {
+          const rBar = reduce(save, session, { type: 'bar', pos: { loopTime: 0, bar: i, beat: 0, beatPhase: 0, loopPhase: 0 } })
+          save = rBar.save
+          session = rBar.session
+        }
       }
 
       const r = reduce(save, session, { type: 'clickCat', target: catId })
