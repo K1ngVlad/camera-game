@@ -10,15 +10,15 @@ export type CatId =
 
 export type Tool = 'horn' | 'uv'
 
-export type BehaviorType =
-  | 'static'
-  | 'hornReveal'
-  | 'wait'
-  | 'uvOnly'
-  | 'collect'
-  | 'callResponse'
-  | 'runner'
-  | 'combo'
+export type BehaviorConfig =
+  | { type: 'static' }
+  | { type: 'hornReveal' }
+  | { type: 'wait'; bars: number }
+  | { type: 'uvOnly' }
+  | { type: 'collect' }
+  | { type: 'callResponse' }
+  | { type: 'runner' }
+  | { type: 'combo' }
 
 export interface CatAnimConfig {
   squash: number
@@ -35,7 +35,7 @@ export interface CatConfig {
   display: { camera: number; stage: number }
   tint: string
   camera: number
-  behavior: BehaviorType
+  behavior: BehaviorConfig
   unlocks: { cameras: number[]; tools: Tool[] }
   grantsOnStart?: Tool[]
   stagePos: { x: number; y: number; scale?: number }
@@ -51,7 +51,7 @@ export const CATS: CatConfig[] = [
     display: { camera: 220, stage: 200 },
     tint: '#F4F1E8',
     camera: 1,
-    behavior: 'static',
+    behavior: { type: 'static' },
     unlocks: { cameras: [3, 6], tools: ['horn'] },
     stagePos: { x: 0.24, y: 0.78, scale: 0.4 },
     enabled: true,
@@ -63,7 +63,7 @@ export const CATS: CatConfig[] = [
     display: { camera: 220, stage: 200 },
     tint: '#E9A15B',
     camera: 6,
-    behavior: 'hornReveal',
+    behavior: { type: 'hornReveal' },
     unlocks: { cameras: [7, 10], tools: [] },
     stagePos: { x: 0.44, y: 0.78, scale: 0.4 },
     enabled: true,
@@ -75,7 +75,7 @@ export const CATS: CatConfig[] = [
     display: { camera: 220, stage: 200 },
     tint: '#9FB4FF',
     camera: 3,
-    behavior: 'wait',
+    behavior: { type: 'wait', bars: 4 },
     unlocks: { cameras: [4, 9], tools: [] },
     stagePos: { x: 0.64, y: 0.78, scale: 0.4 },
     enabled: true,
@@ -87,7 +87,7 @@ export const CATS: CatConfig[] = [
     display: { camera: 220, stage: 200 },
     tint: '#F28C28',
     camera: 10,
-    behavior: 'uvOnly',
+    behavior: { type: 'uvOnly' },
     unlocks: { cameras: [11, 13], tools: [] },
     grantsOnStart: ['uv'],
     stagePos: { x: 0.84, y: 0.78, scale: 0.4 },
@@ -100,7 +100,7 @@ export const CATS: CatConfig[] = [
     display: { camera: 220, stage: 200 },
     tint: '#F2B3B8',
     camera: 7,
-    behavior: 'collect',
+    behavior: { type: 'collect' },
     unlocks: { cameras: [8, 12, 14], tools: [] },
     stagePos: { x: 0.14, y: 0.62, scale: 0.4 },
     enabled: true,
@@ -112,7 +112,7 @@ export const CATS: CatConfig[] = [
     display: { camera: 220, stage: 200 },
     tint: '#FFFFFF',
     camera: 14,
-    behavior: 'callResponse',
+    behavior: { type: 'callResponse' },
     unlocks: { cameras: [], tools: [] },
     stagePos: { x: 0.34, y: 0.62, scale: 0.4 },
     enabled: false,
@@ -124,7 +124,7 @@ export const CATS: CatConfig[] = [
     display: { camera: 220, stage: 200 },
     tint: '#FFFFFF',
     camera: 12,
-    behavior: 'runner',
+    behavior: { type: 'runner' },
     unlocks: { cameras: [], tools: [] },
     stagePos: { x: 0.66, y: 0.62, scale: 0.4 },
     enabled: false,
@@ -136,7 +136,7 @@ export const CATS: CatConfig[] = [
     display: { camera: 220, stage: 200 },
     tint: '#FFFFFF',
     camera: 16,
-    behavior: 'combo',
+    behavior: { type: 'combo' },
     unlocks: { cameras: [], tools: [] },
     stagePos: { x: 0.86, y: 0.62, scale: 0.4 },
     enabled: false,

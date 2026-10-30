@@ -91,6 +91,9 @@ export class GameScene {
           if (session.camera !== this.currentCameraId) {
             this.triggerNoise()
             this.updateCamera(session.camera)
+          } else {
+            // Puzzle state may have changed (e.g. horn revealed a cat) — rebuild
+            this.rebuildCats(session.camera)
           }
           this.updateUV(session.uv)
         }
@@ -134,15 +137,20 @@ export class GameScene {
     this.catSprites.clear()
 
     const save = store.get(saveAtom)
+    const session = store.get(sessionAtom)
     const current = currentCat(save.found)
+    if (!current) return
 
     for (const cat of CATS) {
       if (!cat.enabled) continue
       if (cat.id !== current) continue
 
-      const view = getCatView(cat)
+      const ctx = { screen: session.screen, camera: session.camera, uv: session.uv }
+      const view = getCatView(cat, session.puzzle?.state, ctx)
       if (view.camera !== cameraId) continue
-      if (!view.visible) continue
+      // 'hidden' catState means cat is not rendered (only props may show)
+      if (view.catState === 'hidden') continue
+      // 'out' catState means cat is off-screen (rendered but positioned outside viewport)
 
       const { anim } = cat
       const frameUrl = catFrame(cat.id, anim.frames[0] ?? 'body')
@@ -152,8 +160,14 @@ export class GameScene {
         dispatch({ type: 'clickCat', target: catId })
       })
 
+      // Default position — override below for off-screen states
       sprite.x = VP.w * 0.5
       sprite.y = VP.h * 0.85
+      if (view.catState === 'out') {
+        sprite.x = VP.w + 200
+        sprite.visible = false
+      }
+
       sprite.scale.set(0.6)
 
       const hex = parseInt(cat.tint.replace('#', ''), 16)

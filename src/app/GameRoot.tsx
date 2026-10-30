@@ -4,6 +4,7 @@ import { store } from '../state/store'
 import { sessionAtom } from '../state/atoms'
 import { dispatch } from '../game/dispatch'
 import { bindMixer } from '../audio/bindMixer'
+import { engine } from '../audio/AudioEngine'
 import { PixiHost } from '../render/PixiHost'
 import { GameScene } from '../render/GameScene'
 import type { Application } from 'pixi.js'
@@ -45,6 +46,13 @@ function GameContent() {
       dispatch({ type: 'tick', now: Date.now() / 1000 })
     }, 1000)
     return () => clearInterval(id)
+  }, [])
+
+  // Forward bar events from audio engine to game reducer
+  useEffect(() => {
+    return engine.onBar((pos) => {
+      dispatch({ type: 'bar', pos })
+    })
   }, [])
 
   function handlePixiReady(app: Application): (() => void) | void {

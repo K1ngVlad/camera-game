@@ -18,6 +18,7 @@ export interface SessionState {
   screen: Screen
   camera: number
   uv: boolean
+  puzzle: { catId: CatId; state: unknown } | null
   hint: HintState
   dialogue: DialogueLine[]
   popup: CatId | null
@@ -59,6 +60,22 @@ export interface ReduceResult {
 // What the render layer needs to know about the current cat's view
 export interface CatView {
   camera: number
-  visible: boolean
+  /** Render state name: 'visible' | 'hidden' | 'revealed' | 'out' | 'peek' | 'in' */
+  catState: string
   clickable: boolean
+  props: Record<string, 'shown' | 'hidden'>
+}
+
+// Events dispatched to behaviors from game actions
+export type BehaviorEvent =
+  | { type: 'horn'; camera: number }
+  | { type: 'cameraChanged'; from: number; to: number }
+  | { type: 'screenChanged'; screen: Screen }
+  | { type: 'bar' }
+
+// Context snapshot passed to behavior view/on
+export interface WorldCtx {
+  screen: Screen
+  camera: number
+  uv: boolean
 }

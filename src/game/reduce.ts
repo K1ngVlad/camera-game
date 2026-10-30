@@ -1,4 +1,4 @@
-import type { SaveData, SessionState, Action, Effect, ReduceResult } from './types'
+import type { SaveData, SessionState, Action, Effect, ReduceResult, WorldCtx } from './types'
 import type { CatId } from '../data/cats'
 import { CAT_MAP } from '../data/cats'
 import {
@@ -7,7 +7,7 @@ import {
   isGameComplete,
 } from './progression'
 import { tickHint, onCameraSwitch, resetHint, initHint } from './hints'
-import { getCatView } from './behaviors/index'
+import { getCatView, initPuzzle, applyEvent } from './behaviors/index'
 import {
   INTRO,
   CAT_DIALOGUES,
@@ -22,10 +22,37 @@ export function defaultSession(): SessionState {
     screen: 'menu',
     camera: 1,
     uv: false,
+    puzzle: null,
     hint: initHint(),
     dialogue: [],
     popup: null,
   }
+}
+
+function ensurePuzzle(
+  session: SessionState,
+  found: CatId[],
+): SessionState {
+  const current = currentCat(found)
+  if (!current) return { ...session, puzzle: null }
+  if (session.puzzle?.catId === current) return session
+  const cat = CAT_MAP.get(current)
+  if (!cat) return { ...session, puzzle: null }
+  return { ...session, puzzle: { catId: current, state: initPuzzle(cat) } }
+}
+
+function dispatchBehaviorEvent(
+  session: SessionState,
+  found: CatId[],
+  event: import('./types').BehaviorEvent,
+): SessionState {
+  if (!session.puzzle) return session
+  const cat = CAT_MAP.get(session.puzzle.catId)
+  if (!cat) return session
+  const ctx: WorldCtx = { screen: session.screen, camera: session.camera, uv: session.uv }
+  const newState = applyEvent(cat, session.puzzle.state, event, ctx)
+  if (newState === session.puzzle.state) return session
+  return { ...session, puzzle: { catId: session.puzzle.catId, state: newState } }
 }
 
 export function reduce(
@@ -37,7 +64,18 @@ export function reduce(
 
   switch (action.type) {
     case 'openScreen': {
-      const newSession = { ...session, screen: action.screen }
+      let newSession = { ...session, screen: action.screen }
+
+      // Init puzzle when entering game screens
+      if (action.screen === 'office' || action.screen === 'cameras') {
+        newSession = ensurePuzzle(newSession, save.found)
+      }
+
+      // Dispatch screenChanged to behavior
+      newSession = dispatchBehaviorEvent(newSession, save.found, {
+        type: 'screenChanged',
+        screen: action.screen,
+      })
 
       // First entry to office without found cats → show intro
       if (action.screen === 'office' && save.found.length === 0 && session.screen === 'menu') {
@@ -54,11 +92,15 @@ export function reduce(
 
     case 'selectCamera': {
       const newHint = onCameraSwitch(session.hint, action.now ?? 0)
-      return {
-        save,
-        session: { ...session, camera: action.camera, hint: newHint },
-        effects,
-      }
+      let newSession = { ...session, camera: action.camera, hint: newHint }
+
+      newSession = dispatchBehaviorEvent(newSession, save.found, {
+        type: 'cameraChanged',
+        from: session.camera,
+        to: action.camera,
+      })
+
+      return { save, session: newSession, effects }
     }
 
     case 'toggleUV': {
@@ -67,7 +109,16 @@ export function reduce(
 
     case 'horn': {
       effects.push({ type: 'sfx', id: 'horn' })
-      return { save, session, effects }
+      const newSession = dispatchBehaviorEvent(session, save.found, {
+        type: 'horn',
+        camera: session.camera,
+      })
+      return { save, session: newSession, effects }
+    }
+
+    case 'bar': {
+      const newSession = dispatchBehaviorEvent(session, save.found, { type: 'bar' })
+      return { save, session: newSession, effects }
     }
 
     case 'clickCat': {
@@ -77,7 +128,8 @@ export function reduce(
       const cat = CAT_MAP.get(current)
       if (!cat) return { save, session, effects }
 
-      const view = getCatView(cat)
+      const ctx: WorldCtx = { screen: session.screen, camera: session.camera, uv: session.uv }
+      const view = getCatView(cat, session.puzzle?.state, ctx)
       if (!view.clickable || view.camera !== session.camera) {
         return { save, session, effects }
       }
@@ -94,14 +146,17 @@ export function reduce(
 
       return {
         save: newSave,
-        session: { ...session, hint: newHint, popup: current },
+        session: { ...session, hint: newHint, popup: current, puzzle: null },
         effects,
       }
     }
 
     case 'closePopup': {
       const justFound = session.popup
-      const newSession = { ...session, popup: null }
+      let newSession = { ...session, popup: null }
+
+      // Init puzzle for the next cat
+      newSession = ensurePuzzle(newSession, save.found)
 
       if (!justFound) return { save, session: newSession, effects }
 
