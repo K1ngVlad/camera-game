@@ -161,6 +161,33 @@ export class AudioEngine {
     )
 
     console.log(`[audio] decoded: ${(totalDecodedBytes / 1024 / 1024).toFixed(1)} MB`)
+
+    // Validate song stem lengths against SONG_TIMING and against each other
+    const expectedSongDur =
+      (SONG_TIMING.bars * SONG_TIMING.beatsPerBar * 60) / SONG_TIMING.bpm
+    const songDurations: { id: string; dur: number }[] = []
+    for (const [id, data] of this.trackData) {
+      if (!id.startsWith('song:')) continue
+      const dur = data.buffer.duration
+      songDurations.push({ id, dur })
+      if (Math.abs(dur - expectedSongDur) > 0.03) {
+        console.warn(
+          `[audio] ${id}: expected ${expectedSongDur.toFixed(3)}s` +
+            ` (${SONG_TIMING.bars} bars), got ${dur.toFixed(3)}s`,
+        )
+      }
+    }
+    if (songDurations.length > 1) {
+      const ref = songDurations[0]
+      for (const { id, dur } of songDurations.slice(1)) {
+        if (Math.abs(dur - ref.dur) > 0.03) {
+          console.warn(
+            `[audio] song stem length mismatch: ${ref.id}=${ref.dur.toFixed(3)}s` +
+              ` vs ${id}=${dur.toFixed(3)}s`,
+          )
+        }
+      }
+    }
   }
 
   async start(): Promise<void> {
