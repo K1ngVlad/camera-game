@@ -17,7 +17,7 @@ PixiJS ◀────────────── Jotai store ──▶ Ау�
 - **React UI** (`src/app`) — экраны и оверлеи. Читает атомы, отправляет действия через `dispatch`.
 - **Игровая логика** (`src/game`) — чистые функции: `reduce(state, action) → state` + поведения котов. Не знает про Pixi, React и Web Audio.
 - **Store** (`src/state`) — атомы jotai. Персистентная часть — через `atomWithStorage`.
-- **Аудиодвижок** (`src/audio`) — синглтон. Подписан на store: при изменении пересчитывает `computeMix` и вызывает `setMix`. Отдаёт логике события `beat`/`bar`.
+- **Аудиодвижок** (`src/audio`) — синглтон `engine`. API: `setCameraLoop`, `setSong`, `blip`, `getAmplitude(TrackId)`. `bindMixer` подписан на store: пересчитывает `computeAudioState` и вызывает engine. Отдаёт события `beat`/`bar` по активным часам (камерный луп или песня).
 - **Pixi** (`src/render`) — один `Application` на всю игру, создаётся в `PixiHost` один раз. Меняет содержимое (камера / сцена) по состоянию store. Каждый кадр читает `engine.getAmplitude` для анимации. Клики по котам отправляет в `dispatch`.
 - **Тикер:** один общий цикл — `app.ticker` Pixi. В нём `engine.update()` (события часов) и обновление спрайтов.
 
@@ -71,20 +71,53 @@ type Action =
 ## Конфиг кота (`src/data/cats.ts`)
 
 ```ts
+interface CatAnimConfig {
+  squash: number                  // 0.05..0.25
+  axis: 'x' | 'y'
+  frameMode: 'none' | 'momentary' | 'latch'
+  frames: string[]                // имена кадров: ['body'] или ['closed', 'open']
+  breathe?: number                // по умолчанию 0.015
+}
+
 interface CatConfig {
   id: CatId
   name: string
-  stem: StemId
-  sprite: { frames: string[] }              // ключи текстур, см. docs/assets.md
-  anim: CatAnimConfig                       // docs/audio.md
-  behavior: BehaviorConfig                  // ниже
+  anim: CatAnimConfig             // анимация от амплитуды
+  display: { camera: number; stage: number }  // высота в пикселях на каждом экране
+  tint: string                    // цвет для заглушки-спрайта
+  camera: number
+  behavior: BehaviorType
   unlocks: { cameras: number[]; tools: Tool[] }
-  stagePos: { x: number; y: number; scale?: number }   // доли экрана сцены
-  stamp?: string                            // «Это же наш маскот!»
+  stagePos: { x: number; y: number; scale?: number }
+  stamp?: string
+  enabled: boolean
 }
 
 type Tool = 'horn' | 'uv'
 ```
+
+## Реестр ассетов (`src/assets/registry.ts`)
+
+Glob-импорты (`import.meta.glob`) загружают PNG и аудиофайлы из `src/assets/`. Все функции возвращают URL или заглушку:
+
+```ts
+catFrame(catId, frame)   // PNG кота или placeholder SVG
+catHasArt(catId)         // есть ли реальный арт
+portrait(frame)          // портрет помощника (closed/open)
+background(name)         // фоновое изображение или ''
+cameraTrack(catId)       // URL камерного лупа (OGG→MP3→WAV→placeholder)
+songStem(catId)          // URL стема песни
+sfx(id)                  // URL звукового эффекта
+missingAssets()          // отсортированный список недостающих путей
+```
+
+## Рендер сцены (`src/render/StageView.ts`)
+
+Pixi-класс для экрана сцены: фон из `registry.background('stage')`, найденные коты как `CatSprite` на `stagePos`, отсортированные по y. Анимация от `engine.getAmplitude('song:<catId>')`. Подписывается на `saveAtom`/`sessionAtom`, вызывает `unsubs` в `destroy()`.
+
+## Марионетка помощника (`src/app/ui/Puppet.tsx`)
+
+React-компонент: `{ typing, typedText }`. Raf-цикл управляет амплитудой (пульс при каждой новой гласной → `engine.blip()`, спад ~90 мс), открытием рта (гистерезис > 0.5 / < 0.3) и squash/stretch через `computeScale`.
 
 ## Типовые поведения (`src/game/behaviors/`)
 
