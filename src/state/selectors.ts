@@ -6,6 +6,7 @@ import {
   currentCat,
   isStageOpen,
   isGameComplete,
+  worldState,
 } from '../game/progression'
 
 export const openCamerasAtom = atom((get) => openCameras(get(saveAtom).found))
@@ -23,3 +24,5 @@ export const dialogueAtom = atom((get) => get(sessionAtom).dialogue)
 export const popupAtom = atom((get) => get(sessionAtom).popup)
 
 export const hintAtom = atom((get) => get(sessionAtom).hint)
+
+export const worldStateAtom = atom((get) => worldState(get(saveAtom), get(sessionAtom)))

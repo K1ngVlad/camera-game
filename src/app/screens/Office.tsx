@@ -1,7 +1,7 @@
 import { useAtomValue } from 'jotai'
 import { store } from '../../state/store'
 import { saveAtom } from '../../state/atoms'
-import { isStageOpenAtom, currentCatAtom, openCamerasAtom } from '../../state/selectors'
+import { isStageOpenAtom, currentCatAtom, openCamerasAtom, worldStateAtom } from '../../state/selectors'
 import { dispatch } from '../../game/dispatch'
 import { ENABLED_CATS, CAT_MAP } from '../../data/cats'
 import { Button } from '../ui/Button'
@@ -11,6 +11,7 @@ export function Office() {
   const stageOpen = useAtomValue(isStageOpenAtom, { store })
   const currentCatId = useAtomValue(currentCatAtom, { store })
   const openCams = useAtomValue(openCamerasAtom, { store })
+  const ws = useAtomValue(worldStateAtom, { store })
 
   const currentCat = currentCatId ? CAT_MAP.get(currentCatId) : null
 
@@ -26,6 +27,9 @@ export function Office() {
         gap: 32,
         boxSizing: 'border-box',
         pointerEvents: 'auto',
+        // Dim the office background during blackout; buttons remain bright
+        filter: ws.blackout ? 'brightness(0.45)' : undefined,
+        transition: 'filter 0.8s ease',
       }}
     >
       {/* Top bar */}

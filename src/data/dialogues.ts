@@ -97,18 +97,25 @@ export const CAT_DIALOGUES: Record<CatId, CatDialogue> = {
   },
   pumpkin: {
     onStart: [
-      // TODO text
-      { speaker: ASSISTANT_NAME, text: 'Тыква-кот устроил блэкаут. Держи фонарик УФ — он тебе поможет.' },
+      {
+        speaker: ASSISTANT_NAME,
+        text: 'Что это?! Кто-то вырубил свет во всём районе... Наверняка это наш следующий музыкант.',
+      },
+      {
+        speaker: ASSISTANT_NAME,
+        text: 'Хорошо, что у меня в запасе нашёлся УФ-фонарик. Держи — в ультрафиолете увидишь больше.',
+      },
     ],
     hints: [
-      // TODO text
-      { speaker: ASSISTANT_NAME, text: 'Используй УФ-режим на его камере.' },
-      { speaker: ASSISTANT_NAME, text: 'Камера 10. Включи УФ и кликни на кота.' },
-      { speaker: ASSISTANT_NAME, text: 'УФ-режим, камера 10. Тыква светится — это он.' },
+      { speaker: ASSISTANT_NAME, text: 'Включи УФ — в ультрафиолете видно больше.' },
+      { speaker: ASSISTANT_NAME, text: 'Смотри, где в темноте что-то светится оранжевым.' },
+      { speaker: ASSISTANT_NAME, text: 'Камера 10. Включи УФ и забирай его.' },
     ],
     onFound: [
-      // TODO text
-      { speaker: ASSISTANT_NAME, text: 'Тыква-кот найден! Свет возвращается.' },
+      {
+        speaker: ASSISTANT_NAME,
+        text: 'Наконец-то свет! Тыква-кот пойман. Этот кот определённо слишком увлёкся атмосферой.',
+      },
     ],
   },
   choir: {

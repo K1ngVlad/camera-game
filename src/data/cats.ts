@@ -38,6 +38,8 @@ export interface CatConfig {
   behavior: BehaviorConfig
   unlocks: { cameras: number[]; tools: Tool[] }
   grantsOnStart?: Tool[]
+  /** SFX id played when this cat becomes the current target (alongside onStart dialogue) */
+  onStartSfx?: string
   stagePos: { x: number; y: number; scale?: number }
   stamp?: string
   enabled: boolean
@@ -90,6 +92,7 @@ export const CATS: CatConfig[] = [
     behavior: { type: 'uvOnly' },
     unlocks: { cameras: [11, 13], tools: [] },
     grantsOnStart: ['uv'],
+    onStartSfx: 'blackout',
     stagePos: { x: 0.84, y: 0.78, scale: 0.4 },
     enabled: true,
   },

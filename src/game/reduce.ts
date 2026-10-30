@@ -104,6 +104,7 @@ export function reduce(
     }
 
     case 'toggleUV': {
+      effects.push({ type: 'sfx', id: 'uv' })
       return { save, session: { ...session, uv: !session.uv }, effects }
     }
 
@@ -174,6 +175,10 @@ export function reduce(
         // Introduce next cat
         const next = currentCat(save.found)
         if (next) {
+          const nextCatConfig = CAT_MAP.get(next)
+          if (nextCatConfig?.onStartSfx) {
+            effects.push({ type: 'sfx', id: nextCatConfig.onStartSfx })
+          }
           lines.push(...CAT_DIALOGUES[next].onStart)
         }
       }
