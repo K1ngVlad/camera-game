@@ -1,12 +1,15 @@
 import type { CatView, BehaviorEvent, WorldCtx } from '../types'
 import type { CatConfig } from '../../data/cats'
 import { staticBehavior } from './static'
+import { hornRevealBehavior } from './hornReveal'
 
 /** Initialise puzzle state for the given cat. */
 export function initPuzzle(cat: CatConfig): unknown {
   switch (cat.behavior.type) {
     case 'static':
       return staticBehavior.init(cat, cat.behavior)
+    case 'hornReveal':
+      return hornRevealBehavior.init(cat, cat.behavior)
     default:
       // Unimplemented behaviors fall back to static state
       return staticBehavior.init(cat, { type: 'static' })
@@ -25,6 +28,11 @@ export function applyEvent(
       const s = (state as { camera: number } | undefined) ?? staticBehavior.init(cat, cat.behavior)
       return staticBehavior.on(s, event, ctx)
     }
+    case 'hornReveal': {
+      const s = (state as { camera: number; catState: 'hidden' | 'revealed' } | undefined)
+        ?? hornRevealBehavior.init(cat, cat.behavior)
+      return hornRevealBehavior.on(s, event, ctx)
+    }
     default:
       return state
   }
@@ -36,6 +44,11 @@ export function getCatView(cat: CatConfig, state: unknown, ctx: WorldCtx): CatVi
     case 'static': {
       const s = (state as { camera: number } | undefined) ?? staticBehavior.init(cat, cat.behavior)
       return staticBehavior.view(s, ctx)
+    }
+    case 'hornReveal': {
+      const s = (state as { camera: number; catState: 'hidden' | 'revealed' } | undefined)
+        ?? hornRevealBehavior.init(cat, cat.behavior)
+      return hornRevealBehavior.view(s, ctx)
     }
     default:
       // Unimplemented behaviors are always visible and clickable (fallback)

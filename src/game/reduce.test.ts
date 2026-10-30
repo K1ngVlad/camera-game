@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { reduce, DEFAULT_SAVE, defaultSession } from './reduce'
+import { CAT_MAP } from '../data/cats'
 import type { SaveData, SessionState } from './types'
 
 function freshState(): { save: SaveData; session: SessionState } {
@@ -79,7 +80,19 @@ describe('reduce - full pass (5 cats)', () => {
     ]
 
     for (const [catId, camera] of catsAndCameras) {
-      session = { ...session, camera }
+      // Open cameras screen to init puzzle state
+      const rScreen = reduce(save, { ...session, screen: 'cameras', camera }, { type: 'openScreen', screen: 'cameras' })
+      save = rScreen.save
+      session = rScreen.session
+
+      // hornReveal cats need a horn on their camera before they can be clicked
+      const cat = CAT_MAP.get(catId as import('../data/cats').CatId)
+      if (cat?.behavior.type === 'hornReveal') {
+        const rHorn = reduce(save, session, { type: 'horn' })
+        save = rHorn.save
+        session = rHorn.session
+      }
+
       const r = reduce(save, session, { type: 'clickCat', target: catId })
       save = r.save
       session = r.session
