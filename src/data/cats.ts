@@ -10,12 +10,29 @@ export type CatId =
 
 export type Tool = 'horn' | 'uv'
 
-export type BehaviorType = 'static' | 'hornReveal' | 'wait' | 'uvOnly' | 'collect' | 'callResponse' | 'runner' | 'combo'
+export type BehaviorType =
+  | 'static'
+  | 'hornReveal'
+  | 'wait'
+  | 'uvOnly'
+  | 'collect'
+  | 'callResponse'
+  | 'runner'
+  | 'combo'
+
+export interface CatAnimConfig {
+  squash: number
+  axis: 'x' | 'y'
+  frameMode: 'none' | 'momentary' | 'latch'
+  frames: string[]
+  breathe?: number
+}
 
 export interface CatConfig {
   id: CatId
   name: string
-  stem: string
+  anim: CatAnimConfig
+  display: { camera: number; stage: number }
   tint: string
   camera: number
   behavior: BehaviorType
@@ -30,7 +47,8 @@ export const CATS: CatConfig[] = [
   {
     id: 'drummer',
     name: 'Барабанщик',
-    stem: 'drums',
+    anim: { squash: 0.15, axis: 'y', frameMode: 'momentary', frames: ['body'] },
+    display: { camera: 220, stage: 200 },
     tint: '#F4F1E8',
     camera: 1,
     behavior: 'static',
@@ -41,7 +59,8 @@ export const CATS: CatConfig[] = [
   {
     id: 'longcat',
     name: 'Лонг Кэт',
-    stem: 'bass',
+    anim: { squash: 0.2, axis: 'y', frameMode: 'none', frames: ['body'] },
+    display: { camera: 220, stage: 200 },
     tint: '#E9A15B',
     camera: 6,
     behavior: 'hornReveal',
@@ -52,7 +71,8 @@ export const CATS: CatConfig[] = [
   {
     id: 'keyboard',
     name: 'Кейборд Кэт',
-    stem: 'keys',
+    anim: { squash: 0.1, axis: 'y', frameMode: 'none', frames: ['body'] },
+    display: { camera: 220, stage: 200 },
     tint: '#9FB4FF',
     camera: 3,
     behavior: 'wait',
@@ -63,7 +83,8 @@ export const CATS: CatConfig[] = [
   {
     id: 'pumpkin',
     name: 'Тыква-кот',
-    stem: 'pumpkin',
+    anim: { squash: 0.1, axis: 'y', frameMode: 'none', frames: ['body'] },
+    display: { camera: 220, stage: 200 },
     tint: '#F28C28',
     camera: 10,
     behavior: 'uvOnly',
@@ -75,7 +96,8 @@ export const CATS: CatConfig[] = [
   {
     id: 'choir',
     name: 'Котята-хор',
-    stem: 'choir',
+    anim: { squash: 0.08, axis: 'y', frameMode: 'none', frames: ['body'] },
+    display: { camera: 220, stage: 200 },
     tint: '#F2B3B8',
     camera: 7,
     behavior: 'collect',
@@ -86,7 +108,8 @@ export const CATS: CatConfig[] = [
   {
     id: 'trumpet',
     name: 'Кот-трубач',
-    stem: 'trumpet',
+    anim: { squash: 0.12, axis: 'x', frameMode: 'none', frames: ['body'] },
+    display: { camera: 220, stage: 200 },
     tint: '#FFFFFF',
     camera: 14,
     behavior: 'callResponse',
@@ -97,7 +120,8 @@ export const CATS: CatConfig[] = [
   {
     id: 'popcat',
     name: 'Pop Cat',
-    stem: 'pop',
+    anim: { squash: 0.1, axis: 'y', frameMode: 'none', frames: ['body'] },
+    display: { camera: 220, stage: 200 },
     tint: '#FFFFFF',
     camera: 12,
     behavior: 'runner',
@@ -108,7 +132,8 @@ export const CATS: CatConfig[] = [
   {
     id: 'bongo',
     name: 'Bongo Cat',
-    stem: 'bongo',
+    anim: { squash: 0.18, axis: 'y', frameMode: 'latch', frames: ['body'] },
+    display: { camera: 220, stage: 200 },
     tint: '#FFFFFF',
     camera: 16,
     behavior: 'combo',

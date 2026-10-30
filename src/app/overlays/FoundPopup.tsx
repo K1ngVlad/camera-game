@@ -106,7 +106,7 @@ export function FoundPopup() {
             margin: 0,
           }}
         >
-          Партия: {cat.stem}
+          Партия: {cat.id}
         </p>
 
         {/* Close button */}

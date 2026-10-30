@@ -5,54 +5,37 @@ import { PixiHost } from '../render/PixiHost'
 import { CatSprite } from '../render/CatSprite'
 import { engine } from '../audio/AudioEngine'
 import type { AudioManifest } from '../audio/AudioEngine'
-import { STEM_IDS, CAT_ANIM_CONFIGS } from '../data/stems'
-import type { StemId, StemMix } from '../data/stems'
 import { CATS } from '../data/cats'
-import { cameraTrack, songStem, sfx as sfxUrl } from '../assets/registry'
+import type { CatId } from '../data/cats'
+import { cameraTrack, songStem, sfx as sfxUrl, missingAssets, catFrame } from '../assets/registry'
 
 type AppState = 'idle' | 'loading' | 'ready'
+type ClockMode = 'cam' | 'song'
 
-interface StemControl {
-  enabled: boolean
-  gain: number
-  cutoff: number
+interface CatControl {
+  clockMode: ClockMode
   amplitude: number
 }
 
-function logCutoff(v: number): number {
-  // Map 0..1 slider → 200..20000 Hz (log scale)
-  return Math.round(200 * Math.pow(20000 / 200, v))
-}
-
-function cutoffToSlider(hz: number): number {
-  return Math.log(hz / 200) / Math.log(20000 / 200)
-}
-
-const PRESETS: { label: string; mix: Pick<StemMix, 'gain' | 'cutoff'> }[] = [
-  { label: 'На камере', mix: { gain: 1.0, cutoff: 20000 } },
-  { label: 'Соседняя', mix: { gain: 0.3, cutoff: 800 } },
-  { label: 'Из клуба', mix: { gain: 0.25, cutoff: 600 } },
-  { label: 'Тишина', mix: { gain: 0, cutoff: 20000 } },
-]
-
-function initControls(): Record<StemId, StemControl> {
-  const rec = {} as Record<StemId, StemControl>
-  for (const id of STEM_IDS) rec[id] = { enabled: true, gain: 1.0, cutoff: 20000, amplitude: 0 }
+function initControls(): Record<CatId, CatControl> {
+  const rec = {} as Record<CatId, CatControl>
+  for (const cat of CATS.filter((c) => c.enabled)) {
+    rec[cat.id] = { clockMode: 'cam', amplitude: 0 }
+  }
   return rec
 }
 
 export function Sandbox() {
   const [appState, setAppState] = useState<AppState>('idle')
   const [loadProgress, setLoadProgress] = useState(0)
-  const [controls, setControls] = useState<Record<StemId, StemControl>>(initControls)
+  const [controls, setControls] = useState<Record<CatId, CatControl>>(initControls)
   const [beatLabel, setBeatLabel] = useState('0.0')
   const [beatFlash, setBeatFlash] = useState(false)
+  const [missing, setMissing] = useState<string[]>([])
 
-  const catSpritesRef = useRef<Map<StemId, CatSprite>>(new Map())
+  const catSpritesRef = useRef<Map<CatId, CatSprite>>(new Map())
   const rafRef = useRef<number>(0)
-  const totalFilesRef = useRef(0)
 
-  // Amplitude polling loop — updates React state at ~30 fps
   const startAmplitudeLoop = useCallback(() => {
     const loop = () => {
       if (!engine.started) {
@@ -61,13 +44,17 @@ export function Sandbox() {
       }
       setControls((prev) => {
         const next = { ...prev }
-        for (const id of STEM_IDS) {
-          const a = engine.getAmplitude(id)
-          if (Math.abs(a - prev[id].amplitude) > 0.005) {
-            next[id] = { ...prev[id], amplitude: a }
+        let changed = false
+        for (const cat of CATS.filter((c) => c.enabled)) {
+          const mode = prev[cat.id]?.clockMode ?? 'cam'
+          const trackId = mode === 'cam' ? `cam:${cat.id}` : `song:${cat.id}`
+          const a = engine.getAmplitude(trackId)
+          if (Math.abs(a - (prev[cat.id]?.amplitude ?? 0)) > 0.005) {
+            next[cat.id] = { ...prev[cat.id], amplitude: a }
+            changed = true
           }
         }
-        return next
+        return changed ? next : prev
       })
       rafRef.current = requestAnimationFrame(loop)
     }
@@ -86,74 +73,73 @@ export function Sandbox() {
       song: Object.fromEntries(enabledCats.map((c) => [c.id, songStem(c.id)])),
       sfx: { horn: sfxUrl('horn'), found: sfxUrl('found') },
     }
-    totalFilesRef.current = enabledCats.length * 2 + 2
     await engine.load(manifest, (loaded, total) =>
       setLoadProgress(Math.round((loaded / total) * 100)),
     )
     await engine.start()
     setAppState('ready')
+    setMissing(missingAssets())
     startAmplitudeLoop()
   }
 
   const handlePixiReady = useCallback((app: Application) => {
-    const spacing = 1280 / (STEM_IDS.length + 1)
-    const y = 620
+    const enabledCats = CATS.filter((c) => c.enabled)
+    const spacing = 1280 / (enabledCats.length + 1)
+    const y = 340
 
-    // Local cleanup flag — guards against PixiHost destroying app
-    // before async texture load completes
     let destroyed = false
-    let catTickerFn: (() => void) | null = null
+    let tickerFn: (() => void) | null = null
 
-    const loadTextures = async () => {
-      const texA = (await Assets.load('./assets/placeholder/cat_a.svg')) as Texture
-      const texB = (await Assets.load('./assets/placeholder/cat_b.svg')) as Texture
+    const loadSprites = async () => {
+      for (let i = 0; i < enabledCats.length; i++) {
+        const cat = enabledCats[i]
+        const frameUrl = catFrame(cat.id, cat.anim.frames[0] ?? 'body')
+        let tex: Texture = Texture.WHITE
+        try {
+          tex = (await Assets.load(frameUrl)) as Texture
+        } catch {
+          // use white placeholder
+        }
 
-      if (destroyed) return
+        if (destroyed) return
 
-      for (let i = 0; i < STEM_IDS.length; i++) {
-        const id = STEM_IDS[i]
-        const cfg = CAT_ANIM_CONFIGS[id]
-        const textures = cfg.frames.map((f) => (f === 'cat_a' ? texA : texB))
-
-        const cat = new CatSprite(id, textures, cfg, (clickedId) => {
-          console.log('cat clicked:', clickedId)
+        const sprite = new CatSprite(cat.id, [tex], cat.anim, (id) => {
+          console.log('cat clicked:', id)
         })
-        cat.x = spacing * (i + 1)
-        cat.y = y
-        cat.scale.set(0.5)
-        app.stage.addChild(cat)
-        catSpritesRef.current.set(id, cat)
+        sprite.x = spacing * (i + 1)
+        sprite.y = y
+        const scale = cat.display.camera / Math.max(tex.height, 1)
+        sprite.scale.set(scale)
+        app.stage.addChild(sprite)
+        catSpritesRef.current.set(cat.id, sprite)
       }
 
-      const fn = () => {
+      tickerFn = () => {
         if (!engine.started) return
         const t = performance.now() / 1000
-        for (const id of STEM_IDS) {
-          const cat = catSpritesRef.current.get(id)
-          if (!cat) continue
-          const amp = engine.getAmplitude(id)
-          const onset = engine.isOnset(id)
-          cat.update(amp, onset, t)
+        for (const cat of enabledCats) {
+          const sprite = catSpritesRef.current.get(cat.id)
+          if (!sprite) continue
+          const amp = engine.getAmplitude(`cam:${cat.id}`)
+          const onset = engine.isOnset(`cam:${cat.id}`)
+          sprite.update(amp, onset, t)
         }
       }
-      catTickerFn = fn
-      app.ticker.add(fn)
+      app.ticker.add(tickerFn)
     }
 
-    loadTextures().catch(console.error)
+    loadSprites().catch(console.error)
 
-    // Cleanup called by PixiHost before app.destroy()
     return () => {
       destroyed = true
-      if (catTickerFn) {
-        app.ticker.remove(catTickerFn)
-        catTickerFn = null
+      if (tickerFn) {
+        app.ticker.remove(tickerFn)
+        tickerFn = null
       }
       catSpritesRef.current.clear()
     }
   }, [])
 
-  // Beat/bar listener
   useEffect(() => {
     const unsub = engine.onBeat((pos) => {
       setBeatLabel(`${pos.bar + 1}.${pos.beat + 1}`)
@@ -163,61 +149,14 @@ export function Sandbox() {
     return unsub
   }, [])
 
-  // Apply mix changes to engine (TODO step6: wire to setSong/setCameraLoop)
-  const applyMix = useCallback((_updated: Record<StemId, StemControl>) => {
-    void _updated
-  }, [])
-
-  const toggleStem = (id: StemId) => {
-    setControls((prev) => {
-      const next = {
-        ...prev,
-        [id]: { ...prev[id], enabled: !prev[id].enabled },
-      }
-      applyMix(next)
-      return next
-    })
+  const toggleClock = (id: CatId) => {
+    setControls((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], clockMode: prev[id]?.clockMode === 'cam' ? 'song' : 'cam' },
+    }))
   }
 
-  const setGain = (id: StemId, gain: number) => {
-    setControls((prev) => {
-      const next = { ...prev, [id]: { ...prev[id], gain } }
-      applyMix(next)
-      return next
-    })
-  }
-
-  const setCutoff = (id: StemId, hz: number) => {
-    setControls((prev) => {
-      const next = { ...prev, [id]: { ...prev[id], cutoff: hz } }
-      applyMix(next)
-      return next
-    })
-  }
-
-  const applyPreset = (mix: Pick<StemMix, 'gain' | 'cutoff'>) => {
-    setControls((prev) => {
-      const next = {} as Record<StemId, StemControl>
-      for (const id of STEM_IDS) {
-        next[id] = {
-          ...prev[id],
-          gain: mix.gain,
-          cutoff: mix.cutoff,
-          enabled: mix.gain > 0,
-        }
-      }
-      applyMix(next)
-      return next
-    })
-  }
-
-  const applyInitialMix = useCallback(() => {
-    // TODO step6: engine.setSong(...)
-  }, [])
-
-  useEffect(() => {
-    if (appState === 'ready') applyInitialMix()
-  }, [appState, applyInitialMix])
+  const enabledCats = CATS.filter((c) => c.enabled)
 
   return (
     <div
@@ -232,14 +171,7 @@ export function Sandbox() {
       }}
     >
       {/* Pixi canvas area */}
-      <div
-        style={{
-          flex: '0 0 auto',
-          height: 400,
-          position: 'relative',
-          background: '#0D0C14',
-        }}
-      >
+      <div style={{ flex: '0 0 auto', height: 380, position: 'relative', background: '#0D0C14' }}>
         <PixiHost onReady={handlePixiReady} />
         {appState === 'idle' && (
           <div
@@ -247,17 +179,13 @@ export function Sandbox() {
               position: 'absolute',
               inset: 0,
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 16,
             }}
           >
             <button
               type="button"
-              onClick={() => {
-                void handleStart()
-              }}
+              onClick={() => void handleStart()}
               style={{
                 background: '#FFB23F',
                 color: '#12111A',
@@ -287,15 +215,8 @@ export function Sandbox() {
               gap: 16,
             }}
           >
-            <div style={{ fontSize: 18, color: '#A9A3C2' }}>Загрузка стемов… {loadProgress}%</div>
-            <div
-              style={{
-                width: 300,
-                height: 8,
-                background: '#221F33',
-                borderRadius: 4,
-              }}
-            >
+            <div style={{ fontSize: 18, color: '#A9A3C2' }}>Загрузка… {loadProgress}%</div>
+            <div style={{ width: 300, height: 8, background: '#221F33', borderRadius: 4 }}>
               <div
                 style={{
                   width: `${loadProgress}%`,
@@ -321,15 +242,8 @@ export function Sandbox() {
           gap: 12,
         }}
       >
-        {/* Header row: beat indicator, presets, horn */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
-        >
+        {/* Header */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <span
             style={{
               fontFamily: 'IBM Plex Mono, monospace',
@@ -342,25 +256,6 @@ export function Sandbox() {
           >
             {beatFlash ? '●' : '○'} {beatLabel}
           </span>
-          {PRESETS.map((p) => (
-            <button
-              key={p.label}
-              type="button"
-              onClick={() => applyPreset(p.mix)}
-              style={{
-                background: 'transparent',
-                color: '#F4F1E8',
-                border: '2px solid #3A3655',
-                borderRadius: 8,
-                padding: '6px 14px',
-                cursor: 'pointer',
-                fontFamily: 'Rubik, sans-serif',
-                fontSize: 13,
-              }}
-            >
-              {p.label}
-            </button>
-          ))}
           <button
             type="button"
             onClick={() => engine.playSfx('horn')}
@@ -381,19 +276,20 @@ export function Sandbox() {
           </button>
         </div>
 
-        {/* Stem rows */}
+        {/* Cat rows */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
             gap: 8,
           }}
         >
-          {STEM_IDS.map((id) => {
-            const ctrl = controls[id]
+          {enabledCats.map((cat) => {
+            const ctrl = controls[cat.id]
+            const mode = ctrl?.clockMode ?? 'cam'
             return (
               <div
-                key={id}
+                key={cat.id}
                 style={{
                   background: '#221F33',
                   borderRadius: 10,
@@ -405,29 +301,31 @@ export function Sandbox() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <input
-                    type="checkbox"
-                    checked={ctrl.enabled}
-                    onChange={() => toggleStem(id)}
-                    style={{
-                      width: 16,
-                      height: 16,
-                      cursor: 'pointer',
-                      accentColor: '#FFB23F',
-                    }}
-                    aria-label={`Toggle ${id}`}
-                  />
                   <span
                     style={{
                       fontFamily: 'IBM Plex Mono, monospace',
-                      fontSize: 14,
+                      fontSize: 13,
                       flex: 1,
-                      color: ctrl.enabled ? '#F4F1E8' : '#A9A3C2',
                     }}
                   >
-                    {id}
+                    {cat.name} <span style={{ color: '#8BF0A6' }}>({cat.id})</span>
                   </span>
-                  {/* Amplitude meter */}
+                  <button
+                    type="button"
+                    onClick={() => toggleClock(cat.id)}
+                    style={{
+                      background: mode === 'cam' ? '#3A3655' : '#1A2A3A',
+                      color: '#F4F1E8',
+                      border: '1px solid #5A5677',
+                      borderRadius: 6,
+                      padding: '3px 10px',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      fontFamily: 'IBM Plex Mono, monospace',
+                    }}
+                  >
+                    {mode === 'cam' ? 'cam loop' : 'song stem'}
+                  </button>
                   <div
                     style={{
                       width: 60,
@@ -439,75 +337,48 @@ export function Sandbox() {
                   >
                     <div
                       style={{
-                        width: `${ctrl.amplitude * 100}%`,
+                        width: `${(ctrl?.amplitude ?? 0) * 100}%`,
                         height: '100%',
-                        background: ctrl.amplitude > 0.7 ? '#FF5A5F' : '#8BF0A6',
+                        background: (ctrl?.amplitude ?? 0) > 0.7 ? '#FF5A5F' : '#8BF0A6',
                         borderRadius: 4,
                       }}
                     />
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label style={{ fontSize: 11, color: '#A9A3C2', width: 36 }}>gain</label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={ctrl.gain}
-                    onChange={(e) => setGain(id, parseFloat(e.target.value))}
-                    style={{
-                      flex: 1,
-                      accentColor: '#FFB23F',
-                      cursor: 'pointer',
-                    }}
-                    aria-label={`Gain for ${id}`}
-                  />
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: '#A9A3C2',
-                      width: 34,
-                      textAlign: 'right',
-                      fontFamily: 'IBM Plex Mono, monospace',
-                    }}
-                  >
-                    {ctrl.gain.toFixed(2)}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label style={{ fontSize: 11, color: '#A9A3C2', width: 36 }}>cut</label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.001}
-                    value={cutoffToSlider(ctrl.cutoff)}
-                    onChange={(e) => setCutoff(id, logCutoff(parseFloat(e.target.value)))}
-                    style={{
-                      flex: 1,
-                      accentColor: '#8BF0A6',
-                      cursor: 'pointer',
-                    }}
-                    aria-label={`Cutoff for ${id}`}
-                  />
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: '#A9A3C2',
-                      width: 54,
-                      textAlign: 'right',
-                      fontFamily: 'IBM Plex Mono, monospace',
-                    }}
-                  >
-                    {ctrl.cutoff >= 1000 ? `${(ctrl.cutoff / 1000).toFixed(1)}k` : ctrl.cutoff}
-                    Hz
-                  </span>
-                </div>
               </div>
             )
           })}
         </div>
+
+        {/* Missing assets */}
+        {missing.length > 0 && (
+          <div>
+            <p
+              style={{
+                fontFamily: 'IBM Plex Mono, monospace',
+                fontSize: 12,
+                color: '#FF8B8B',
+                margin: '0 0 6px',
+              }}
+            >
+              Missing assets ({missing.length}):
+            </p>
+            <ul
+              style={{
+                fontFamily: 'IBM Plex Mono, monospace',
+                fontSize: 11,
+                color: '#A9A3C2',
+                margin: 0,
+                padding: '0 0 0 16px',
+                listStyle: 'disc',
+              }}
+            >
+              {missing.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   )

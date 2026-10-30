@@ -5,6 +5,8 @@ import {
   NoiseFilter,
   Graphics,
   RenderTexture,
+  Texture,
+  Assets,
   type Application,
 } from 'pixi.js'
 import { store } from '../state/store'
@@ -12,11 +14,11 @@ import { saveAtom, sessionAtom } from '../state/atoms'
 import { getCameraBackground } from './cameraBackground'
 import { CatSprite } from './CatSprite'
 import { dispatch } from '../game/dispatch'
-import { Assets, Texture } from 'pixi.js'
 import { CATS, CAT_MAP } from '../data/cats'
+import type { CatId } from '../data/cats'
 import { getCatView } from '../game/behaviors/index'
 import { engine } from '../audio/AudioEngine'
-import { CAT_ANIM_CONFIGS, type StemId } from '../data/stems'
+import { catFrame } from '../assets/registry'
 import { CAMERA_VIEWPORT } from '../app/layout'
 
 const VP = CAMERA_VIEWPORT
@@ -29,12 +31,10 @@ export class GameScene {
   private noiseFilter: NoiseFilter
   private scanlines: TilingSprite | null = null
   private uvOverlay: Sprite | null = null
-  private catSprites: Map<string, CatSprite> = new Map()
+  private catSprites: Map<CatId, CatSprite> = new Map()
   private currentCameraId = -1
   private noiseAlpha = 0
-  private texturesLoaded = false
-  private texA: Texture | null = null
-  private texB: Texture | null = null
+  private textureCache: Map<string, Texture> = new Map()
   private unsubs: (() => void)[] = []
 
   constructor(app: Application) {
@@ -53,7 +53,6 @@ export class GameScene {
     app.stage.eventMode = 'passive'
 
     this.createScanlines()
-    this.loadTextures().catch(console.error)
     this.subscribeToStore()
   }
 
@@ -73,15 +72,12 @@ export class GameScene {
     this.root.addChild(this.scanlines)
   }
 
-  private async loadTextures() {
-    try {
-      this.texA = (await Assets.load('./assets/placeholder/cat_a.svg')) as Texture
-      this.texB = (await Assets.load('./assets/placeholder/cat_b.svg')) as Texture
-      this.texturesLoaded = true
-      this.updateCamera(store.get(sessionAtom).camera)
-    } catch {
-      // No textures yet — cats won't render
-    }
+  private async loadTexture(url: string): Promise<Texture> {
+    const cached = this.textureCache.get(url)
+    if (cached) return cached
+    const tex = (await Assets.load(url)) as Texture
+    this.textureCache.set(url, tex)
+    return tex
   }
 
   private subscribeToStore() {
@@ -136,8 +132,6 @@ export class GameScene {
     }
     this.catSprites.clear()
 
-    if (!this.texturesLoaded || !this.texA || !this.texB) return
-
     const save = store.get(saveAtom)
 
     for (const cat of CATS) {
@@ -148,16 +142,11 @@ export class GameScene {
       if (view.camera !== cameraId) continue
       if (!view.visible) continue
 
-      const stemId = cat.stem as StemId
-      const animCfg = CAT_ANIM_CONFIGS[stemId]
-      if (!animCfg) continue
-
-      const textures = animCfg.frames.map((f) =>
-        f === 'cat_a' ? this.texA! : this.texB!,
-      )
+      const { anim } = cat
+      const frameUrl = catFrame(cat.id, anim.frames[0] ?? 'body')
 
       const catId = cat.id
-      const sprite = new CatSprite(stemId, textures, animCfg, () => {
+      const sprite = new CatSprite(catId, [Texture.WHITE], anim, () => {
         dispatch({ type: 'clickCat', target: catId })
       })
 
@@ -172,6 +161,19 @@ export class GameScene {
 
       this.camContainer.addChild(sprite)
       this.catSprites.set(cat.id, sprite)
+
+      // Async texture load — update sprite once ready
+      this.loadTexture(frameUrl)
+        .then((tex) => {
+          if (!this.catSprites.has(catId)) return
+          const scale = cat.display.camera / Math.max(tex.height, 1)
+          sprite.scale.set(scale)
+          sprite.tint = 0xffffff
+          sprite.setTextures([tex])
+        })
+        .catch(() => {
+          // placeholder remains
+        })
     }
   }
 
@@ -201,10 +203,10 @@ export class GameScene {
 
     const t = performance.now() / 1000
     for (const [id, sprite] of this.catSprites) {
-      const cat = CAT_MAP.get(id as import('../data/cats').CatId)
+      const cat = CAT_MAP.get(id)
       if (!cat) continue
-      const amp = engine.getAmplitude(cat.stem as StemId)
-      const onset = engine.isOnset(cat.stem as StemId)
+      const amp = engine.getAmplitude(`cam:${id}`)
+      const onset = engine.isOnset(`cam:${id}`)
       sprite.update(amp, onset, t)
     }
   }

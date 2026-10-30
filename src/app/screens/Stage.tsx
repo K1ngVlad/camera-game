@@ -174,7 +174,7 @@ export function Stage() {
                 >
                   {cat.name}
                   <br />
-                  <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{cat.stem}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{cat.id}</span>
                 </div>
               </>
             ) : (

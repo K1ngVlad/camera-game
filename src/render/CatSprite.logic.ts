@@ -1,6 +1,6 @@
 // Pure animation math — no Pixi/React/Web Audio imports, fully testable
 
-import type { CatAnimConfig } from '../data/stems'
+import type { CatAnimConfig } from '../data/cats'
 
 export type { CatAnimConfig }
 
