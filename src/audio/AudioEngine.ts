@@ -1,115 +1,139 @@
 import { computeEnvelope, detectOnsets, sampleEnvelope } from './envelope'
 import type { Envelope } from './envelope'
-import { positionAt, createBeatDetector } from './clock'
-import type { MusicConfig, MusicPosition } from './clock'
-import type { StemId, StemMix } from '../data/stems'
+import { trackTime, trackPosition, createBeatDetector } from './clock'
+import type { MusicPosition, TrackTiming } from './clock'
+import type { CatId } from '../data/cats'
+import { SONG_TIMING, CAMERA_TIMING } from '../data/music'
 
-type SfxId = string
+export type TrackId = string  // 'cam:<catId>', 'song:<catId>'
 
-interface StemNodes {
+export interface AudioManifest {
+  camera: Partial<Record<CatId, string>>
+  song: Partial<Record<CatId, string>>
+  sfx: Record<string, string>
+}
+
+interface TrackData {
+  buffer: AudioBuffer
+  timing: TrackTiming
+  envelope: Envelope
+  onsets: Uint8Array
+}
+
+interface CamNodes {
+  catId: CatId
   source: AudioBufferSourceNode
   filter: BiquadFilterNode
   gain: GainNode
-  envelope: Envelope
-  onsets: Uint8Array
+  t0: number
+}
+
+interface SongNodes {
+  source: AudioBufferSourceNode
+  filter: BiquadFilterNode
+  gain: GainNode
 }
 
 type BeatCallback = (pos: MusicPosition) => void
 
 export class AudioEngine {
   private ctx: AudioContext | null = null
-  private config: MusicConfig
   private limiter: DynamicsCompressorNode | null = null
+  private songBus: GainNode | null = null
+  private sfxBus: GainNode | null = null
 
-  private stemBuffers = new Map<StemId, AudioBuffer>()
-  private sfxBuffers = new Map<SfxId, AudioBuffer>()
-  private stemNodes = new Map<StemId, StemNodes>()
-  private sfxGain: GainNode | null = null
+  private trackData = new Map<TrackId, TrackData>()
+  private sfxBuffers = new Map<string, AudioBuffer>()
+
+  private camNodes: CamNodes | null = null
+  private songNodes = new Map<CatId, SongNodes>()
+  private songT0 = 0
+  private songPlaying = false
 
   private _started = false
-  private t0 = 0
 
-  private beatCallbacks: Set<BeatCallback> = new Set()
-  private barCallbacks: Set<BeatCallback> = new Set()
-  private detector = createBeatDetector({ bpm: 120, beatsPerBar: 4, bars: 16 })
+  private activeClock: 'cam' | 'song' = 'song'
+  private beatDet = createBeatDetector({
+    bpm: SONG_TIMING.bpm,
+    beatsPerBar: SONG_TIMING.beatsPerBar,
+    bars: SONG_TIMING.bars,
+  })
+  private beatT0 = 0
 
-  constructor(config: MusicConfig) {
-    this.config = config
-    this.detector = createBeatDetector(config)
-  }
+  private beatCallbacks = new Set<BeatCallback>()
+  private barCallbacks = new Set<BeatCallback>()
 
   get started(): boolean {
     return this._started
   }
 
   get loaded(): boolean {
-    return this.stemBuffers.size > 0
+    return this.trackData.size > 0 || this.sfxBuffers.size > 0
   }
 
   async load(
-    stems: Partial<Record<StemId, string>>,
-    sfx: Record<string, string>,
+    manifest: AudioManifest,
     onProgress?: (loaded: number, total: number) => void,
   ): Promise<void> {
-    const stemEntries = Object.entries(stems) as [StemId, string][]
-    const sfxEntries = Object.entries(sfx)
-    const total = stemEntries.length + sfxEntries.length
-    let loaded = 0
+    type Entry = [TrackId | string, string, 'cam' | 'song' | 'sfx']
+    const entries: Entry[] = []
 
-    const expectedDuration = (this.config.bars * this.config.beatsPerBar * 60) / this.config.bpm
-
-    const decode = async (url: string): Promise<AudioBuffer> => {
-      const resp = await fetch(url)
-      const arrayBuf = await resp.arrayBuffer()
-      // Use OfflineAudioContext to decode without a live context
-      const offline = new OfflineAudioContext(1, 1, 44100)
-      return offline.decodeAudioData(arrayBuf)
+    for (const [catId, url] of Object.entries(manifest.camera) as [CatId, string | undefined][]) {
+      if (url) entries.push([`cam:${catId}`, url, 'cam'])
+    }
+    for (const [catId, url] of Object.entries(manifest.song) as [CatId, string | undefined][]) {
+      if (url) entries.push([`song:${catId}`, url, 'song'])
+    }
+    for (const [id, url] of Object.entries(manifest.sfx)) {
+      if (url) entries.push([id, url, 'sfx'])
     }
 
-    await Promise.all([
-      ...stemEntries.map(async ([id, url]) => {
-        const buf = await decode(url)
-        const diff = Math.abs(buf.duration - expectedDuration)
-        if (diff > 0.05) {
-          console.warn(
-            `[AudioEngine] Stem "${id}" duration ${buf.duration.toFixed(3)} s differs from expected ${expectedDuration.toFixed(3)} s by ${(diff * 1000).toFixed(0)} ms`,
-          )
+    const total = entries.length
+    let loaded = 0
+    let totalDecodedBytes = 0
+
+    await Promise.all(
+      entries.map(async ([id, url, kind]) => {
+        const resp = await fetch(url)
+        const arrayBuf = await resp.arrayBuffer()
+        const offline = new OfflineAudioContext(1, 1, 44100)
+        const buffer = await offline.decodeAudioData(arrayBuf)
+        totalDecodedBytes += buffer.numberOfChannels * buffer.length * 4
+
+        if (kind === 'sfx') {
+          this.sfxBuffers.set(id, buffer)
+        } else {
+          const timing: TrackTiming =
+            kind === 'cam'
+              ? (CAMERA_TIMING[id.slice(4) as CatId] ?? { bpm: 120, beatsPerBar: 4, bars: 4 })
+              : SONG_TIMING
+          const channels: Float32Array[] = []
+          for (let c = 0; c < buffer.numberOfChannels; c++) {
+            channels.push(buffer.getChannelData(c))
+          }
+          const envelope = computeEnvelope(channels, buffer.sampleRate)
+          const onsets = detectOnsets(envelope.values)
+          this.trackData.set(id, { buffer, timing, envelope, onsets })
         }
-        // Compute envelopes from all channels
-        const channels: Float32Array[] = []
-        for (let c = 0; c < buf.numberOfChannels; c++) channels.push(buf.getChannelData(c))
-        const envelope = computeEnvelope(channels, buf.sampleRate)
-        const onsets = detectOnsets(envelope.values)
-        this.stemBuffers.set(id, buf)
-        // Store envelope & onsets alongside buffer; nodes created on start()
-        // We temporarily store them via a side channel
-        ;(buf as AudioBuffer & { _envelope?: Envelope; _onsets?: Uint8Array })._envelope = envelope
-        ;(buf as AudioBuffer & { _envelope?: Envelope; _onsets?: Uint8Array })._onsets = onsets
+
         loaded++
         onProgress?.(loaded, total)
       }),
-      ...sfxEntries.map(async ([id, url]) => {
-        const buf = await decode(url)
-        this.sfxBuffers.set(id, buf)
-        loaded++
-        onProgress?.(loaded, total)
-      }),
-    ])
+    )
+
+    console.log(`[audio] decoded: ${(totalDecodedBytes / 1024 / 1024).toFixed(1)} MB`)
   }
 
   async start(): Promise<void> {
     if (this._started) return
-
     if (!this.ctx) {
       this.ctx = new AudioContext()
     }
     if (this.ctx.state === 'suspended') {
       await this.ctx.resume()
     }
-
     const ctx = this.ctx
 
-    // Build output chain: limiter → destination
     this.limiter = ctx.createDynamicsCompressor()
     this.limiter.threshold.value = -6
     this.limiter.knee.value = 6
@@ -118,108 +142,244 @@ export class AudioEngine {
     this.limiter.release.value = 0.25
     this.limiter.connect(ctx.destination)
 
-    this.sfxGain = ctx.createGain()
-    this.sfxGain.gain.value = 1.0
-    this.sfxGain.connect(this.limiter)
+    this.songBus = ctx.createGain()
+    this.songBus.gain.value = 0
+    this.songBus.connect(this.limiter)
 
-    const loopDuration = (this.config.bars * this.config.beatsPerBar * 60) / this.config.bpm
-
-    this.t0 = ctx.currentTime + 0.1
-
-    for (const [id, buf] of this.stemBuffers) {
-      const eb = buf as AudioBuffer & { _envelope?: Envelope; _onsets?: Uint8Array }
-      const envelope = eb._envelope!
-      const onsets = eb._onsets!
-
-      const source = ctx.createBufferSource()
-      source.buffer = buf
-      source.loop = true
-      source.loopStart = 0
-      source.loopEnd = loopDuration
-
-      const filter = ctx.createBiquadFilter()
-      filter.type = 'lowpass'
-      filter.frequency.value = 20000
-      filter.Q.value = 0.5
-
-      const gain = ctx.createGain()
-      gain.gain.value = 1.0
-
-      source.connect(filter)
-      filter.connect(gain)
-      gain.connect(this.limiter)
-
-      source.start(this.t0)
-
-      this.stemNodes.set(id, { source, filter, gain, envelope, onsets })
-    }
+    this.sfxBus = ctx.createGain()
+    this.sfxBus.gain.value = 1.0
+    this.sfxBus.connect(this.limiter)
 
     this._started = true
   }
 
-  setMix(mix: Partial<Record<StemId, StemMix>>): void {
-    if (!this.ctx) return
-    const now = this.ctx.currentTime
+  setCameraLoop(state: { catId: CatId; gain: number; cutoff: number } | null): void {
+    if (!this.ctx || !this.limiter) return
+    const ctx = this.ctx
+    const now = ctx.currentTime
+    const FADE = 0.3
     const TC = 0.05
-    for (const [id, { gain, cutoff }] of Object.entries(mix) as [StemId, StemMix][]) {
-      const nodes = this.stemNodes.get(id)
-      if (!nodes) continue
-      nodes.gain.gain.setTargetAtTime(gain, now, TC)
-      nodes.filter.frequency.setTargetAtTime(cutoff, now, TC)
+
+    if (state === null) {
+      if (this.camNodes) {
+        this.camNodes.gain.gain.linearRampToValueAtTime(0, now + FADE)
+        const src = this.camNodes.source
+        setTimeout(() => {
+          try {
+            src.stop()
+          } catch {
+            // source may already be stopped
+          }
+        }, FADE * 1000 + 100)
+        this.camNodes = null
+      }
+      this.activeClock = 'song'
+      this._resetBeatDet('song', this.songT0)
+      return
+    }
+
+    const { catId, gain, cutoff } = state
+
+    if (this.camNodes && this.camNodes.catId === catId) {
+      this.camNodes.gain.gain.setTargetAtTime(gain, now, TC)
+      this.camNodes.filter.frequency.setTargetAtTime(cutoff, now, TC)
+      return
+    }
+
+    if (this.camNodes) {
+      const oldGain = this.camNodes.gain
+      const oldSrc = this.camNodes.source
+      oldGain.gain.linearRampToValueAtTime(0, now + FADE)
+      setTimeout(() => {
+        try {
+          oldSrc.stop()
+        } catch {
+          // source may already be stopped
+        }
+      }, FADE * 1000 + 100)
+    }
+
+    const data = this.trackData.get(`cam:${catId}`)
+    if (!data) {
+      this.camNodes = null
+      return
+    }
+
+    const source = ctx.createBufferSource()
+    source.buffer = data.buffer
+    source.loop = true
+    const barDur = (data.timing.beatsPerBar * 60) / data.timing.bpm
+    source.loopStart = (data.timing.loopStartBar ?? 0) * barDur
+    source.loopEnd = (data.timing.loopEndBar ?? data.timing.bars) * barDur
+
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = cutoff
+    filter.Q.value = 0.5
+
+    const gainNode = ctx.createGain()
+    gainNode.gain.setValueAtTime(0, now)
+    gainNode.gain.linearRampToValueAtTime(gain, now + FADE)
+
+    source.connect(filter)
+    filter.connect(gainNode)
+    gainNode.connect(this.limiter)
+    source.start(now)
+
+    this.camNodes = { catId, source, filter, gain: gainNode, t0: now }
+    this.activeClock = 'cam'
+    this._resetBeatDet('cam', now, catId)
+  }
+
+  setSong(state: {
+    playing: boolean
+    restart?: boolean
+    busGain: number
+    cutoff: number
+    gains: Partial<Record<CatId, number>>
+  }): void {
+    if (!this.ctx || !this.songBus || !this.limiter) return
+    const ctx = this.ctx
+    const now = ctx.currentTime
+    const TC = 0.05
+    const FADE = 0.3
+
+    if (!state.playing) {
+      this.songBus.gain.linearRampToValueAtTime(0, now + FADE)
+      for (const [, nodes] of this.songNodes) {
+        const src = nodes.source
+        setTimeout(() => {
+          try {
+            src.stop()
+          } catch {
+            // source may already be stopped
+          }
+        }, FADE * 1000 + 100)
+      }
+      this.songNodes.clear()
+      this.songPlaying = false
+      return
+    }
+
+    if (state.restart || !this.songPlaying) {
+      for (const [, nodes] of this.songNodes) {
+        try {
+          nodes.source.stop()
+        } catch {
+          // source may already be stopped
+        }
+      }
+      this.songNodes.clear()
+
+      const t0 = now + 0.05
+      this.songT0 = t0
+
+      for (const [trackId, data] of this.trackData) {
+        if (!trackId.startsWith('song:')) continue
+        const catId = trackId.slice(5) as CatId
+        const catGain = state.gains[catId] ?? 0
+
+        const barDur = (data.timing.beatsPerBar * 60) / data.timing.bpm
+        const source = ctx.createBufferSource()
+        source.buffer = data.buffer
+        source.loop = true
+        source.loopStart = (data.timing.loopStartBar ?? 0) * barDur
+        source.loopEnd = (data.timing.loopEndBar ?? data.timing.bars) * barDur
+
+        const filter = ctx.createBiquadFilter()
+        filter.type = 'lowpass'
+        filter.frequency.value = state.cutoff
+        filter.Q.value = 0.5
+
+        const gainNode = ctx.createGain()
+        gainNode.gain.value = catGain
+
+        source.connect(filter)
+        filter.connect(gainNode)
+        gainNode.connect(this.songBus)
+        source.start(t0)
+
+        this.songNodes.set(catId, { source, filter, gain: gainNode })
+      }
+
+      this.songBus.gain.setValueAtTime(0, now)
+      this.songBus.gain.linearRampToValueAtTime(state.busGain, now + FADE)
+      this.songPlaying = true
+
+      if (this.activeClock === 'song') {
+        this._resetBeatDet('song', t0)
+      }
+    } else {
+      this.songBus.gain.setTargetAtTime(state.busGain, now, TC)
+      for (const [catId, nodes] of this.songNodes) {
+        nodes.gain.gain.setTargetAtTime(state.gains[catId] ?? 0, now, TC)
+        nodes.filter.frequency.setTargetAtTime(state.cutoff, now, TC)
+      }
     }
   }
 
-  setMasterVolume(v: number): void {
-    if (!this.limiter || !this.ctx) return
-    // No master gain node yet; future expansion
-    void v
-  }
-
-  playSfx(id: string, opts?: { volume?: number }): void {
-    if (!this.ctx || !this.sfxGain) return
+  playSfx(id: string, opts?: { gain?: number; detune?: number }): void {
+    if (!this.ctx || !this.sfxBus) return
     const buf = this.sfxBuffers.get(id)
     if (!buf) return
     const source = this.ctx.createBufferSource()
     source.buffer = buf
+    if (opts?.detune !== undefined) source.detune.value = opts.detune
     const gain = this.ctx.createGain()
-    gain.gain.value = opts?.volume ?? 1.0
+    gain.gain.value = opts?.gain ?? 1.0
     source.connect(gain)
-    gain.connect(this.sfxGain)
+    gain.connect(this.sfxBus)
     source.start()
   }
 
-  getPosition(): MusicPosition {
-    if (!this.ctx || !this._started) {
-      return positionAt(0, this.config)
-    }
-    const elapsed = this.ctx.currentTime - this.t0
-    return positionAt(Math.max(0, elapsed), this.config)
+  blip(opts: { freq: number; duration: number; gain: number }): void {
+    if (!this.ctx || !this.sfxBus) return
+    const ctx = this.ctx
+    const now = ctx.currentTime
+    const { freq, duration, gain } = opts
+
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.value = freq
+
+    const gainNode = ctx.createGain()
+    gainNode.gain.setValueAtTime(0, now)
+    gainNode.gain.linearRampToValueAtTime(gain, now + 0.005)
+    gainNode.gain.linearRampToValueAtTime(0, now + duration)
+
+    osc.connect(gainNode)
+    gainNode.connect(this.sfxBus)
+    osc.start(now)
+    osc.stop(now + duration + 0.01)
   }
 
-  getAmplitude(id: StemId): number {
-    const nodes = this.stemNodes.get(id)
-    if (!nodes) return 0
-    const pos = this.getPosition()
-    const env = sampleEnvelope(nodes.envelope, pos.loopTime)
-    // Multiply by current gain param value (approximate)
-    const g = nodes.gain.gain.value
-    return Math.min(1, env * g)
+  getAmplitude(trackId: TrackId): number {
+    if (!this.ctx || !this._started) return 0
+    const data = this.trackData.get(trackId)
+    if (!data) return 0
+    const elapsed = this._trackElapsed(trackId)
+    if (elapsed === null) return 0
+    return sampleEnvelope(data.envelope, trackTime(elapsed, data.timing))
   }
 
-  getRawEnvelope(id: StemId): number {
-    const nodes = this.stemNodes.get(id)
-    if (!nodes) return 0
-    const pos = this.getPosition()
-    return sampleEnvelope(nodes.envelope, pos.loopTime)
+  isOnset(trackId: TrackId): boolean {
+    if (!this.ctx || !this._started) return false
+    const data = this.trackData.get(trackId)
+    if (!data) return false
+    const elapsed = this._trackElapsed(trackId)
+    if (elapsed === null) return false
+    const t = trackTime(elapsed, data.timing)
+    const idx = Math.floor(t / data.envelope.hopSeconds) % data.onsets.length
+    return data.onsets[idx] === 1
   }
 
-  isOnset(id: StemId): boolean {
-    const nodes = this.stemNodes.get(id)
-    if (!nodes) return false
-    const pos = this.getPosition()
-    const hopSec = nodes.envelope.hopSeconds
-    const idx = Math.floor(pos.loopTime / hopSec) % nodes.onsets.length
-    return nodes.onsets[idx] === 1
+  getPosition(trackId: TrackId): MusicPosition | null {
+    if (!this.ctx || !this._started) return null
+    const data = this.trackData.get(trackId)
+    if (!data) return null
+    const elapsed = this._trackElapsed(trackId)
+    if (elapsed === null) return null
+    return trackPosition(elapsed, data.timing)
   }
 
   onBeat(cb: BeatCallback): () => void {
@@ -234,15 +394,45 @@ export class AudioEngine {
 
   update(): void {
     if (!this._started || !this.ctx) return
-    const elapsed = Math.max(0, this.ctx.currentTime - this.t0)
-    const { beat, bar } = this.detector.update(elapsed)
+    if (this.activeClock === 'song' && !this.songPlaying) return
+    if (this.activeClock === 'cam' && !this.camNodes) return
+    const elapsed = Math.max(0, this.ctx.currentTime - this.beatT0)
+    const { beat, bar } = this.beatDet.update(elapsed)
     if (beat) for (const cb of this.beatCallbacks) cb(beat)
     if (bar) for (const cb of this.barCallbacks) cb(bar)
   }
+
+  private _trackElapsed(trackId: TrackId): number | null {
+    if (!this.ctx) return null
+    if (trackId.startsWith('cam:')) {
+      if (!this.camNodes || this.camNodes.catId !== (trackId.slice(4) as CatId)) return null
+      return Math.max(0, this.ctx.currentTime - this.camNodes.t0)
+    }
+    if (trackId.startsWith('song:')) {
+      if (!this.songPlaying) return null
+      return Math.max(0, this.ctx.currentTime - this.songT0)
+    }
+    return null
+  }
+
+  private _resetBeatDet(clock: 'cam' | 'song', t0: number, catId?: CatId): void {
+    this.activeClock = clock
+    this.beatT0 = t0
+    if (clock === 'cam' && catId) {
+      const timing = CAMERA_TIMING[catId]
+      this.beatDet = createBeatDetector({
+        bpm: timing.bpm,
+        beatsPerBar: timing.beatsPerBar,
+        bars: timing.bars,
+      })
+    } else {
+      this.beatDet = createBeatDetector({
+        bpm: SONG_TIMING.bpm,
+        beatsPerBar: SONG_TIMING.beatsPerBar,
+        bars: SONG_TIMING.bars,
+      })
+    }
+  }
 }
 
-export const engine = new AudioEngine({ bpm: 120, beatsPerBar: 4, bars: 16 })
-
-export function createEngine(config: MusicConfig): AudioEngine {
-  return new AudioEngine(config)
-}
+export const engine = new AudioEngine()

@@ -1,25 +1,42 @@
 import { store } from '../state/store'
 import { saveAtom, sessionAtom } from '../state/atoms'
-import { computeMix } from './mixer'
+import { computeAudioState } from './mixer'
 import { engine } from './AudioEngine'
+import { CATS } from '../data/cats'
+import type { CatId } from '../data/cats'
 
-let lastMixKey = ''
+function getCurrentCat(found: CatId[]): CatId | null {
+  return CATS.filter((c) => c.enabled).find((c) => !found.includes(c.id))?.id ?? null
+}
 
-function applyMix(): void {
+let lastKey = ''
+let prevScreen = ''
+
+function applyAudio(): void {
   const save = store.get(saveAtom)
   const session = store.get(sessionAtom)
 
-  const key = `${session.screen}:${session.camera}:${save.found.join(',')}`
-  if (key === lastMixKey) return
-  lastMixKey = key
+  const { screen, camera } = session
+  const { found } = save
+  const currentCat = getCurrentCat(found)
 
-  const mix = computeMix({ screen: session.screen, camera: session.camera, found: save.found })
-  engine.setMix(mix)
+  const key = `${screen}:${camera}:${found.join(',')}`
+  if (key === lastKey) return
+  lastKey = key
+
+  const isStageEntry = screen === 'stage' && prevScreen !== 'stage'
+  prevScreen = screen
+
+  const state = computeAudioState({ screen, camera, found, currentCat })
+  const songState = isStageEntry ? { ...state.song, restart: true } : state.song
+
+  engine.setCameraLoop(state.camera)
+  engine.setSong(songState)
 }
 
 export function bindMixer(): () => void {
-  const unsubSave = store.sub(saveAtom, applyMix)
-  const unsubSession = store.sub(sessionAtom, applyMix)
+  const unsubSave = store.sub(saveAtom, applyAudio)
+  const unsubSession = store.sub(sessionAtom, applyAudio)
   return () => {
     unsubSave()
     unsubSession()

@@ -3,67 +3,81 @@ import type { CatId } from '../data/cats'
 import { CATS } from '../data/cats'
 import { isNeighborCamera } from '../game/progression'
 
-export interface StemMix {
+export interface CameraAudioState {
+  catId: CatId
   gain: number
   cutoff: number
 }
 
-export interface MixInput {
+export interface SongAudioState {
+  playing: boolean
+  restart?: boolean
+  busGain: number
+  cutoff: number
+  gains: Partial<Record<CatId, number>>
+}
+
+export interface AudioStateInput {
   screen: Screen
   camera: number
   found: CatId[]
+  currentCat: CatId | null
 }
 
 const OPEN = 20000
 
-// Matrix from docs/audio.md
-const FOUND_STAGE: StemMix = { gain: 1.0, cutoff: OPEN }
-const FOUND_AWAY: StemMix = { gain: 0.25, cutoff: 600 }
-const TARGET_ON_CAM: StemMix = { gain: 1.0, cutoff: OPEN }
-const TARGET_NEIGHBOR: StemMix = { gain: 0.3, cutoff: 800 }
-const TARGET_FAR: StemMix = { gain: 0, cutoff: OPEN }
-const NOT_IN_GAME: StemMix = { gain: 0, cutoff: OPEN }
+export function computeAudioState(input: AudioStateInput): {
+  camera: CameraAudioState | null
+  song: SongAudioState
+} {
+  const { screen, camera, found, currentCat } = input
+  const enabledCats = CATS.filter((c) => c.enabled)
 
-export function computeMix(input: MixInput): Record<string, StemMix> {
-  const { screen, camera, found } = input
-  const result: Record<string, StemMix> = {}
-
-  for (const cat of CATS) {
-    if (!cat.enabled) {
-      result[cat.stem] = NOT_IN_GAME
-      continue
-    }
-
-    if (found.includes(cat.id)) {
-      result[cat.stem] = screen === 'stage' ? FOUND_STAGE : FOUND_AWAY
-      continue
-    }
-
-    // Current target cat (first non-found enabled cat)
-    const isTarget = !found.some((f) => f === cat.id)
-    const isCurrent =
-      isTarget &&
-      CATS.filter((c) => c.enabled)
-        .filter((c) => !found.includes(c.id))
-        .at(0)?.id === cat.id
-
-    if (!isCurrent) {
-      result[cat.stem] = NOT_IN_GAME
-      continue
-    }
-
-    if (screen === 'cameras') {
-      if (camera === cat.camera) {
-        result[cat.stem] = TARGET_ON_CAM
-      } else if (isNeighborCamera(camera, cat.camera)) {
-        result[cat.stem] = TARGET_NEIGHBOR
-      } else {
-        result[cat.stem] = TARGET_FAR
+  switch (screen) {
+    case 'menu': {
+      const gains: Partial<Record<CatId, number>> = {}
+      for (const cat of enabledCats) gains[cat.id] = 1.0
+      return {
+        camera: null,
+        song: { playing: true, busGain: 0.18, cutoff: 900, gains },
       }
-    } else {
-      result[cat.stem] = TARGET_FAR
+    }
+
+    case 'office': {
+      const gains: Partial<Record<CatId, number>> = {}
+      for (const cat of enabledCats) gains[cat.id] = found.includes(cat.id) ? 1.0 : 0
+      const playing = found.some((id) => enabledCats.some((c) => c.id === id))
+      return {
+        camera: null,
+        song: { playing, busGain: 0.22, cutoff: 700, gains },
+      }
+    }
+
+    case 'cameras': {
+      let camState: CameraAudioState | null = null
+      if (currentCat) {
+        const cat = enabledCats.find((c) => c.id === currentCat)
+        if (cat) {
+          if (camera === cat.camera) {
+            camState = { catId: currentCat, gain: 1.0, cutoff: OPEN }
+          } else if (isNeighborCamera(camera, cat.camera)) {
+            camState = { catId: currentCat, gain: 0.3, cutoff: 800 }
+          }
+        }
+      }
+      return {
+        camera: camState,
+        song: { playing: false, busGain: 0, cutoff: OPEN, gains: {} },
+      }
+    }
+
+    case 'stage': {
+      const gains: Partial<Record<CatId, number>> = {}
+      for (const cat of enabledCats) gains[cat.id] = found.includes(cat.id) ? 1.0 : 0
+      return {
+        camera: null,
+        song: { playing: true, busGain: 1.0, cutoff: OPEN, gains },
+      }
     }
   }
-
-  return result
 }

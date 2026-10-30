@@ -4,14 +4,11 @@ import { Assets, Texture } from 'pixi.js'
 import { PixiHost } from '../render/PixiHost'
 import { CatSprite } from '../render/CatSprite'
 import { engine } from '../audio/AudioEngine'
-import {
-  STEM_IDS,
-  PLACEHOLDER_STEMS,
-  PLACEHOLDER_SFX,
-  CAT_ANIM_CONFIGS,
-  defaultMix,
-} from '../data/stems'
+import type { AudioManifest } from '../audio/AudioEngine'
+import { STEM_IDS, CAT_ANIM_CONFIGS } from '../data/stems'
 import type { StemId, StemMix } from '../data/stems'
+import { CATS } from '../data/cats'
+import { cameraTrack, songStem, sfx as sfxUrl } from '../assets/registry'
 
 type AppState = 'idle' | 'loading' | 'ready'
 
@@ -83,9 +80,14 @@ export function Sandbox() {
 
   const handleStart = async () => {
     setAppState('loading')
-    const stemEntries = Object.entries(PLACEHOLDER_STEMS) as [StemId, string][]
-    totalFilesRef.current = stemEntries.length + 1
-    await engine.load(PLACEHOLDER_STEMS, PLACEHOLDER_SFX, (loaded, total) =>
+    const enabledCats = CATS.filter((c) => c.enabled)
+    const manifest: AudioManifest = {
+      camera: Object.fromEntries(enabledCats.map((c) => [c.id, cameraTrack(c.id)])),
+      song: Object.fromEntries(enabledCats.map((c) => [c.id, songStem(c.id)])),
+      sfx: { horn: sfxUrl('horn'), found: sfxUrl('found') },
+    }
+    totalFilesRef.current = enabledCats.length * 2 + 2
+    await engine.load(manifest, (loaded, total) =>
       setLoadProgress(Math.round((loaded / total) * 100)),
     )
     await engine.start()
@@ -161,16 +163,9 @@ export function Sandbox() {
     return unsub
   }, [])
 
-  // Apply mix changes to engine
-  const applyMix = useCallback((updated: Record<StemId, StemControl>) => {
-    const mix = {} as Record<StemId, StemMix>
-    for (const id of STEM_IDS) {
-      mix[id] = {
-        gain: updated[id].enabled ? updated[id].gain : 0,
-        cutoff: updated[id].cutoff,
-      }
-    }
-    engine.setMix(mix)
+  // Apply mix changes to engine (TODO step6: wire to setSong/setCameraLoop)
+  const applyMix = useCallback((_updated: Record<StemId, StemControl>) => {
+    void _updated
   }, [])
 
   const toggleStem = (id: StemId) => {
@@ -217,7 +212,7 @@ export function Sandbox() {
   }
 
   const applyInitialMix = useCallback(() => {
-    engine.setMix(defaultMix())
+    // TODO step6: engine.setSong(...)
   }, [])
 
   useEffect(() => {

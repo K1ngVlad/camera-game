@@ -1,62 +1,120 @@
 import { describe, it, expect } from 'vitest'
-import { computeMix } from './mixer'
+import { computeAudioState } from './mixer'
+import { CATS } from '../data/cats'
 import type { CatId } from '../data/cats'
 
-describe('computeMix', () => {
-  it('drummer on its camera → gain 1.0, open', () => {
-    const mix = computeMix({ screen: 'cameras', camera: 1, found: [] })
-    expect(mix['drums'].gain).toBe(1.0)
-    expect(mix['drums'].cutoff).toBe(20000)
+function firstUnfound(found: CatId[]): CatId | null {
+  return CATS.filter((c) => c.enabled).find((c) => !found.includes(c.id))?.id ?? null
+}
+
+const OPEN = 20000
+
+describe('computeAudioState — cameras', () => {
+  it('current cat on its own camera → camera gain 1.0, open, song off', () => {
+    const state = computeAudioState({ screen: 'cameras', camera: 1, found: [], currentCat: 'drummer' })
+    expect(state.camera?.catId).toBe('drummer')
+    expect(state.camera?.gain).toBe(1.0)
+    expect(state.camera?.cutoff).toBe(OPEN)
+    expect(state.song.playing).toBe(false)
   })
 
-  it('drummer on neighbor camera → gain 0.3, cutoff 800', () => {
-    // cam 1 neighbors are 2 and 5
-    const mix = computeMix({ screen: 'cameras', camera: 2, found: [] })
-    expect(mix['drums'].gain).toBe(0.3)
-    expect(mix['drums'].cutoff).toBe(800)
+  it('current cat on neighbor camera → gain 0.3, cutoff 800', () => {
+    const state = computeAudioState({ screen: 'cameras', camera: 2, found: [], currentCat: 'drummer' })
+    expect(state.camera?.catId).toBe('drummer')
+    expect(state.camera?.gain).toBe(0.3)
+    expect(state.camera?.cutoff).toBe(800)
   })
 
-  it('drummer far away → gain 0', () => {
-    const mix = computeMix({ screen: 'cameras', camera: 16, found: [] })
-    expect(mix['drums'].gain).toBe(0)
+  it('current cat far away → camera null', () => {
+    const state = computeAudioState({ screen: 'cameras', camera: 16, found: [], currentCat: 'drummer' })
+    expect(state.camera).toBeNull()
   })
 
-  it('found cat in office → gain 0.25, cutoff 600', () => {
-    const mix = computeMix({ screen: 'office', camera: 1, found: ['drummer'] })
-    expect(mix['drums'].gain).toBe(0.25)
-    expect(mix['drums'].cutoff).toBe(600)
-  })
-
-  it('found cat on stage → gain 1.0, open', () => {
-    const mix = computeMix({ screen: 'stage', camera: 1, found: ['drummer'] })
-    expect(mix['drums'].gain).toBe(1.0)
-    expect(mix['drums'].cutoff).toBe(20000)
-  })
-
-  it('non-current enabled cat → gain 0 (not in game yet)', () => {
-    // longcat is not current when drummer not found either — but drummer is current
-    // after drummer found, longcat becomes current
-    const mix = computeMix({ screen: 'cameras', camera: 6, found: [] })
-    // bass (longcat) should be 0 — it's not current yet
-    expect(mix['bass'].gain).toBe(0)
-  })
-
-  it('longcat on its camera after drummer found → gain 1.0', () => {
+  it('longcat on its camera after drummer found', () => {
     const found: CatId[] = ['drummer']
-    const mix = computeMix({ screen: 'cameras', camera: 6, found })
-    expect(mix['bass'].gain).toBe(1.0)
+    const state = computeAudioState({
+      screen: 'cameras',
+      camera: 6,
+      found,
+      currentCat: firstUnfound(found),
+    })
+    expect(state.camera?.catId).toBe('longcat')
+    expect(state.camera?.gain).toBe(1.0)
   })
 
-  it('disabled cat always has gain 0', () => {
+  it('currentCat null → no camera loop', () => {
+    const state = computeAudioState({ screen: 'cameras', camera: 1, found: [], currentCat: null })
+    expect(state.camera).toBeNull()
+  })
+})
+
+describe('computeAudioState — office', () => {
+  it('no found cats → song not playing', () => {
+    const state = computeAudioState({ screen: 'office', camera: 1, found: [], currentCat: 'drummer' })
+    expect(state.song.playing).toBe(false)
+    expect(state.camera).toBeNull()
+  })
+
+  it('found drummer → song playing, drummer gain 1.0, busGain 0.22, cutoff 700', () => {
+    const state = computeAudioState({
+      screen: 'office',
+      camera: 1,
+      found: ['drummer'],
+      currentCat: firstUnfound(['drummer']),
+    })
+    expect(state.song.playing).toBe(true)
+    expect(state.song.gains['drummer']).toBe(1.0)
+    expect(state.song.busGain).toBe(0.22)
+    expect(state.song.cutoff).toBe(700)
+  })
+
+  it('unfound cats have gain 0 in office', () => {
+    const state = computeAudioState({
+      screen: 'office',
+      camera: 1,
+      found: ['drummer'],
+      currentCat: firstUnfound(['drummer']),
+    })
+    expect(state.song.gains['longcat']).toBe(0)
+  })
+})
+
+describe('computeAudioState — menu', () => {
+  it('menu → song playing, all enabled cats gain 1.0, busGain 0.18, cutoff 900', () => {
+    const state = computeAudioState({ screen: 'menu', camera: 0, found: [], currentCat: null })
+    expect(state.song.playing).toBe(true)
+    expect(state.song.busGain).toBe(0.18)
+    expect(state.song.cutoff).toBe(900)
+    expect(state.camera).toBeNull()
+    for (const cat of CATS.filter((c) => c.enabled)) {
+      expect(state.song.gains[cat.id]).toBe(1.0)
+    }
+  })
+})
+
+describe('computeAudioState — stage', () => {
+  it('stage with found cats → song playing, busGain 1.0, open cutoff', () => {
+    const found: CatId[] = ['drummer']
+    const state = computeAudioState({ screen: 'stage', camera: 0, found, currentCat: null })
+    expect(state.song.playing).toBe(true)
+    expect(state.song.busGain).toBe(1.0)
+    expect(state.song.cutoff).toBe(OPEN)
+    expect(state.song.gains['drummer']).toBe(1.0)
+    expect(state.camera).toBeNull()
+  })
+
+  it('disabled cats have no gain (absent or 0) on stage', () => {
     const found: CatId[] = ['drummer', 'longcat', 'keyboard', 'pumpkin', 'choir']
-    const mix = computeMix({ screen: 'stage', camera: 1, found })
-    expect(mix['trumpet'].gain).toBe(0)
-    expect(mix['pop'].gain).toBe(0)
-    expect(mix['bongo'].gain).toBe(0)
+    const state = computeAudioState({ screen: 'stage', camera: 0, found, currentCat: null })
+    for (const cat of CATS.filter((c) => !c.enabled)) {
+      expect(state.song.gains[cat.id] ?? 0).toBe(0)
+    }
   })
 
-  it('current cat in office → gain 0', () => {
-    const mix = computeMix({ screen: 'office', camera: 1, found: [] })
-    expect(mix['drums'].gain).toBe(0)
+  it('unfound enabled cats have gain 0 on stage', () => {
+    const state = computeAudioState({ screen: 'stage', camera: 0, found: [], currentCat: null })
+    for (const cat of CATS.filter((c) => c.enabled)) {
+      expect(state.song.gains[cat.id]).toBe(0)
+    }
   })
 })

@@ -4,7 +4,9 @@ import { store } from '../../state/store'
 import { saveAtom } from '../../state/atoms'
 import { dispatch } from '../../game/dispatch'
 import { engine } from '../../audio/AudioEngine'
-import { PLACEHOLDER_STEMS, PLACEHOLDER_SFX } from '../../data/stems'
+import type { AudioManifest } from '../../audio/AudioEngine'
+import { CATS } from '../../data/cats'
+import { cameraTrack, songStem, sfx as sfxUrl } from '../../assets/registry'
 import { Button } from '../ui/Button'
 
 export function Menu() {
@@ -20,7 +22,13 @@ export function Menu() {
     if (engine.loaded) return
     async function load() {
       setLoading(true)
-      await engine.load(PLACEHOLDER_STEMS, PLACEHOLDER_SFX, (done, total) => {
+      const enabledCats = CATS.filter((c) => c.enabled)
+      const manifest: AudioManifest = {
+        camera: Object.fromEntries(enabledCats.map((c) => [c.id, cameraTrack(c.id)])),
+        song: Object.fromEntries(enabledCats.map((c) => [c.id, songStem(c.id)])),
+        sfx: { horn: sfxUrl('horn'), found: sfxUrl('found') },
+      }
+      await engine.load(manifest, (done, total) => {
         setProgress(Math.round((done / total) * 100))
       })
       setLoaded(true)
