@@ -86,7 +86,7 @@ interface CatConfig {
   display: { camera: number; stage: number }  // высота в пикселях на каждом экране
   tint: string                    // цвет для заглушки-спрайта
   camera: number
-  behavior: BehaviorType
+  behavior: BehaviorConfig  // discriminated union: {type:'static'}|{type:'hornReveal'}|{type:'wait';bars:number}|…
   unlocks: { cameras: number[]; tools: Tool[] }
   stagePos: { x: number; y: number; scale?: number }
   stamp?: string
@@ -108,6 +108,7 @@ background(name)         // фоновое изображение или ''
 cameraTrack(catId)       // URL камерного лупа (OGG→MP3→WAV→placeholder)
 songStem(catId)          // URL стема песни
 sfx(id)                  // URL звукового эффекта
+prop(name)               // URL пропа-ассета (bin, …) или SVG-заглушка
 missingAssets()          // отсортированный список недостающих путей
 ```
 
@@ -125,11 +126,25 @@ React-компонент: `{ typing, typedText }`. Raf-цикл управляе
 
 ```ts
 interface Behavior<C, S> {
-  init(config: C): S
-  on(state: S, event: BehaviorEvent, ctx: WorldCtx): S     // horn | camera | bar | beat | clickPart | uv
-  view(state: S, ctx: WorldCtx): CatView                    // где кот, виден ли, кликабелен ли, какие части/пропсы показать
-  isCaught(state: S): boolean
+  init(cat: CatConfig, cfg: C): S
+  on(state: S, event: BehaviorEvent, ctx: WorldCtx): S
+  view(state: S, ctx: WorldCtx): CatView
 }
+
+// CatView
+interface CatView {
+  camera: number
+  catState: string   // 'visible' | 'hidden' | 'revealed' | 'out' | 'peek' | 'in'
+  clickable: boolean
+  props: Record<string, 'shown' | 'hidden'>
+}
+
+// BehaviorEvent
+type BehaviorEvent =
+  | { type: 'horn'; camera: number }
+  | { type: 'cameraChanged'; from: number; to: number }
+  | { type: 'screenChanged'; screen: Screen }
+  | { type: 'bar' }
 ```
 
 | Тип | Кот | Суть |
