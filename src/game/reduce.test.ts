@@ -96,7 +96,7 @@ describe('reduce - full pass (5 cats)', () => {
 describe('reduce - hints', () => {
   it('hint level increases after 15 camera switches', () => {
     const { save } = freshState()
-    let session = { ...defaultSession(), screen: 'cameras' as const }
+    let session = defaultSession()
 
     for (let i = 0; i < 15; i++) {
       const cam = (i % 5) + 1

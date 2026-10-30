@@ -1,0 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Rubik:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+
+:root {
+  --bg-deep: #12111a;
+  --bg: #1a1826;
+  --panel: #221f33;
+  --panel-alt: #1d1b2b;
+  --line: #3a3655;
+  --text: #f4f1e8;
+  --text-muted: #a9a3c2;
+  --accent: #ffb23f;
+  --accent-shadow: #9a5e0e;
+  --cam: #8bf0a6;
+  --cam-bg: #0d1a14;
+  --uv: #a98bff;
+  --rec: #ff5a5f;
+
+  font-family: 'Rubik', sans-serif;
+}
