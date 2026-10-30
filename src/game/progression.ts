@@ -1,6 +1,8 @@
 import type { CatId, Tool } from '../data/cats'
 import { CATS, ENABLED_CATS, CAT_MAP } from '../data/cats'
 import { INITIAL_OPEN_CAMERAS, neighbors } from '../data/cameras'
+import type { SaveData, SessionState } from './types'
+import { getCatView } from './behaviors/index'
 
 export function openCameras(found: CatId[]): number[] {
   const open = new Set(INITIAL_OPEN_CAMERAS)
@@ -57,4 +59,15 @@ export function availableTools(found: CatId[]): Tool[] {
 // Order of enabled cats for display
 export function enabledCatsInOrder(): typeof CATS {
   return ENABLED_CATS
+}
+
+// Global world state derived from the current cat's view (e.g. blackout)
+export function worldState(save: SaveData, session: SessionState): { blackout?: boolean } {
+  const id = currentCat(save.found)
+  if (!id) return {}
+  const cat = CAT_MAP.get(id)
+  if (!cat) return {}
+  const ctx = { screen: session.screen, camera: session.camera, uv: session.uv }
+  const view = getCatView(cat, session.puzzle?.state, ctx)
+  return view.world ?? {}
 }

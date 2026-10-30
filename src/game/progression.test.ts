@@ -7,8 +7,26 @@ import {
   isStageOpen,
   isGameComplete,
   availableTools,
+  worldState,
 } from './progression'
 import type { CatId } from '../data/cats'
+import type { SaveData, SessionState } from './types'
+
+function makeSession(overrides: Partial<SessionState> = {}): SessionState {
+  return {
+    screen: 'cameras',
+    camera: 1,
+    uv: false,
+    puzzle: null,
+    hint: { level: 0, switches: 0, since: 0 },
+    dialogue: [],
+    popup: null,
+    ...overrides,
+  }
+}
+function makeSave(found: CatId[] = []): SaveData {
+  return { version: 1, found }
+}
 
 describe('neighbors', () => {
   it('cam 1 (top-left) has 2 neighbors', () => {
@@ -98,5 +116,22 @@ describe('availableTools', () => {
     const found: CatId[] = ['drummer', 'longcat', 'keyboard']
     const tools = availableTools(found)
     expect(tools).toContain('uv')
+  })
+})
+
+describe('worldState', () => {
+  it('returns {} when all cats found', () => {
+    const save = makeSave(['drummer', 'longcat', 'keyboard', 'pumpkin', 'choir'])
+    expect(worldState(save, makeSession())).toEqual({})
+  })
+
+  it('returns {} for drummer (static behavior has no world effects)', () => {
+    const save = makeSave([])
+    expect(worldState(save, makeSession())).toEqual({})
+  })
+
+  it('returns {} for keyboard cat (wait behavior has no world effects)', () => {
+    const save = makeSave(['drummer', 'longcat'])
+    expect(worldState(save, makeSession({ camera: 3 }))).toEqual({})
   })
 })

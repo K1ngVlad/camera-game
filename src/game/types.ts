@@ -60,10 +60,12 @@ export interface ReduceResult {
 // What the render layer needs to know about the current cat's view
 export interface CatView {
   camera: number
-  /** Render state name: 'visible' | 'hidden' | 'revealed' | 'out' | 'peek' | 'in' */
+  /** Render state name: 'visible' | 'hidden' | 'revealed' | 'out' | 'peek' | 'in' | 'dark' | 'lit' */
   catState: string
   clickable: boolean
   props: Record<string, 'shown' | 'hidden'>
+  /** Global world effects this cat imposes while it is the current target */
+  world?: { blackout?: boolean }
 }
 
 // Events dispatched to behaviors from game actions
