@@ -7,6 +7,20 @@ import { SONG_TIMING, CAMERA_TIMING } from '../data/music'
 
 export type TrackId = string  // 'cam:<catId>', 'song:<catId>'
 
+export interface AudioReportEntry {
+  catId: CatId
+  kind: 'cam' | 'song'
+  duration: number
+  bars: number
+  channels: number
+  silent: boolean
+  lengthOk?: boolean // only for song stems
+}
+export interface AudioReport {
+  cats: AudioReportEntry[]
+  totalMB: number
+}
+
 /** Pure helper: compute camera loop TrackTiming from buffer duration + optional overrides. */
 export function computeCamTiming(
   duration: number,
@@ -497,6 +511,45 @@ export class AudioEngine {
       return Math.max(0, this.ctx.currentTime - this.songT0)
     }
     return null
+  }
+
+  getReport(): AudioReport {
+    const expectedSongDur = (SONG_TIMING.bars * SONG_TIMING.beatsPerBar * 60) / SONG_TIMING.bpm
+    let totalDecodedBytes = 0
+    for (const data of this.trackData.values()) {
+      totalDecodedBytes += data.buffer.numberOfChannels * data.buffer.length * 4
+    }
+    for (const buf of this.sfxBuffers.values()) {
+      totalDecodedBytes += buf.numberOfChannels * buf.length * 4
+    }
+
+    const cats: AudioReport['cats'] = []
+    for (const [id, data] of this.trackData) {
+      if (id.startsWith('cam:')) {
+        const catId = id.slice(4) as CatId
+        cats.push({
+          catId,
+          kind: 'cam',
+          duration: data.buffer.duration,
+          bars: data.timing.bars,
+          channels: data.buffer.numberOfChannels,
+          silent: data.buffer.duration <= 1.01 && data.buffer.numberOfChannels === 1,
+        })
+      } else if (id.startsWith('song:')) {
+        const catId = id.slice(5) as CatId
+        const ok = Math.abs(data.buffer.duration - expectedSongDur) <= 0.03
+        cats.push({
+          catId,
+          kind: 'song',
+          duration: data.buffer.duration,
+          bars: data.timing.bars,
+          channels: data.buffer.numberOfChannels,
+          lengthOk: ok,
+          silent: data.buffer.duration <= 1.01 && data.buffer.numberOfChannels === 1,
+        })
+      }
+    }
+    return { cats, totalMB: totalDecodedBytes / 1024 / 1024 }
   }
 
   private _resetBeatDet(clock: 'cam' | 'song', t0: number, catId?: CatId): void {

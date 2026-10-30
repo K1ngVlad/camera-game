@@ -4,10 +4,10 @@ import { Assets, Texture } from 'pixi.js'
 import { PixiHost } from '../render/PixiHost'
 import { CatSprite } from '../render/CatSprite'
 import { engine } from '../audio/AudioEngine'
-import type { AudioManifest } from '../audio/AudioEngine'
+import type { AudioManifest, AudioReport } from '../audio/AudioEngine'
 import { CATS } from '../data/cats'
 import type { CatId } from '../data/cats'
-import { cameraTrack, songStem, sfx as sfxUrl, missingAssets, catFrame } from '../assets/registry'
+import { cameraTrack, songStem, sfx as sfxUrl, missingAssets, catFrame, catHasArt } from '../assets/registry'
 
 type AppState = 'idle' | 'loading' | 'ready'
 type ClockMode = 'cam' | 'song'
@@ -32,6 +32,7 @@ export function Sandbox() {
   const [beatLabel, setBeatLabel] = useState('0.0')
   const [beatFlash, setBeatFlash] = useState(false)
   const [missing, setMissing] = useState<string[]>([])
+  const [report, setReport] = useState<AudioReport | null>(null)
 
   const catSpritesRef = useRef<Map<CatId, CatSprite>>(new Map())
   const rafRef = useRef<number>(0)
@@ -79,6 +80,7 @@ export function Sandbox() {
     await engine.start()
     setAppState('ready')
     setMissing(missingAssets())
+    setReport(engine.getReport())
     startAmplitudeLoop()
   }
 
@@ -349,6 +351,72 @@ export function Sandbox() {
             )
           })}
         </div>
+
+        {/* Asset report table */}
+        {report && (
+          <div>
+            <p
+              style={{
+                fontFamily: 'IBM Plex Mono, monospace',
+                fontSize: 12,
+                color: '#A9A3C2',
+                margin: '0 0 6px',
+              }}
+            >
+              Asset report — decoded {report.totalMB.toFixed(1)} MB total
+            </p>
+            <table
+              style={{
+                fontFamily: 'IBM Plex Mono, monospace',
+                fontSize: 11,
+                borderCollapse: 'collapse',
+                width: '100%',
+              }}
+            >
+              <thead>
+                <tr style={{ color: '#8BF0A6', textAlign: 'left' }}>
+                  <th style={{ padding: '2px 8px 2px 0' }}>Cat</th>
+                  <th style={{ padding: '2px 8px 2px 0' }}>Art</th>
+                  <th style={{ padding: '2px 8px 2px 0' }}>Cam loop</th>
+                  <th style={{ padding: '2px 8px 2px 0' }}>Dur</th>
+                  <th style={{ padding: '2px 8px 2px 0' }}>Bars</th>
+                  <th style={{ padding: '2px 8px 2px 0' }}>Song stem</th>
+                  <th style={{ padding: '2px 8px 2px 0' }}>Dur</th>
+                  <th style={{ padding: '2px 8px 2px 0' }}>Len</th>
+                  <th style={{ padding: '2px 8px 2px 0' }}>Ch</th>
+                </tr>
+              </thead>
+              <tbody>
+                {CATS.filter((c) => c.enabled).map((cat) => {
+                  const cam = report.cats.find((r) => r.catId === cat.id && r.kind === 'cam')
+                  const song = report.cats.find((r) => r.catId === cat.id && r.kind === 'song')
+                  const hasArt = catHasArt(cat.id)
+                  return (
+                    <tr key={cat.id} style={{ color: '#F4F1E8', borderTop: '1px solid #2A2740' }}>
+                      <td style={{ padding: '3px 8px 3px 0', color: '#A9A3C2' }}>{cat.id}</td>
+                      <td style={{ padding: '3px 8px 3px 0', color: hasArt ? '#8BF0A6' : '#FF8B8B' }}>
+                        {hasArt ? 'art' : 'stub'}
+                      </td>
+                      <td style={{ padding: '3px 8px 3px 0', color: cam ? (cam.silent ? '#FFB23F' : '#8BF0A6') : '#FF8B8B' }}>
+                        {cam ? (cam.silent ? 'stub' : 'ok') : 'none'}
+                      </td>
+                      <td style={{ padding: '3px 8px 3px 0' }}>{cam ? cam.duration.toFixed(2) + 's' : '—'}</td>
+                      <td style={{ padding: '3px 8px 3px 0' }}>{cam ? cam.bars : '—'}</td>
+                      <td style={{ padding: '3px 8px 3px 0', color: song ? (song.silent ? '#FFB23F' : '#8BF0A6') : '#FF8B8B' }}>
+                        {song ? (song.silent ? 'stub' : 'ok') : 'none'}
+                      </td>
+                      <td style={{ padding: '3px 8px 3px 0' }}>{song ? song.duration.toFixed(2) + 's' : '—'}</td>
+                      <td style={{ padding: '3px 8px 3px 0', color: song?.lengthOk === false ? '#FF8B8B' : '#8BF0A6' }}>
+                        {song ? (song.lengthOk ? '✓' : '⚠') : '—'}
+                      </td>
+                      <td style={{ padding: '3px 8px 3px 0' }}>{song ? song.channels : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Missing assets */}
         {missing.length > 0 && (
