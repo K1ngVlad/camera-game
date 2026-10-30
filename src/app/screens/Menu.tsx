@@ -11,12 +11,13 @@ export function Menu() {
   const save = useAtomValue(saveAtom, { store })
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [loaded, setLoaded] = useState(false)
+  const [loaded, setLoaded] = useState(() => engine.loaded)
   const [confirmReset, setConfirmReset] = useState(false)
 
   const hasSave = save.found.length > 0
 
   useEffect(() => {
+    if (engine.loaded) return
     async function load() {
       setLoading(true)
       await engine.load(PLACEHOLDER_STEMS, PLACEHOLDER_SFX, (done, total) => {

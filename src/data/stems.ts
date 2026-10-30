@@ -44,6 +44,7 @@ export const PLACEHOLDER_STEMS: Record<StemId, string> = {
 
 export const PLACEHOLDER_SFX = {
   horn: './assets/audio/placeholder/horn.wav',
+  found: './assets/audio/placeholder/horn.wav', // reuse horn as placeholder for found fanfare
 }
 
 /** Cat animation configuration — lives in data so both render and tests can import it. */

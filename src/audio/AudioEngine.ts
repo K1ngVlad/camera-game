@@ -42,6 +42,10 @@ export class AudioEngine {
     return this._started
   }
 
+  get loaded(): boolean {
+    return this.stemBuffers.size > 0
+  }
+
   async load(
     stems: Partial<Record<StemId, string>>,
     sfx: Record<string, string>,
