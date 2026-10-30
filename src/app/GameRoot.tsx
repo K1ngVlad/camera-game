@@ -5,6 +5,7 @@ import { sessionAtom } from '../state/atoms'
 import { dispatch } from '../game/dispatch'
 import { bindMixer } from '../audio/bindMixer'
 import { PixiHost } from '../render/PixiHost'
+import { GameScene } from '../render/GameScene'
 import type { Application } from 'pixi.js'
 import { Menu } from './screens/Menu'
 import { Office } from './screens/Office'
@@ -47,8 +48,9 @@ function GameContent() {
   }, [])
 
   function handlePixiReady(app: Application): (() => void) | void {
-    // Scene manager will be wired up in step 7
-    void app
+    const scene = new GameScene(app)
+    app.ticker.add((ticker) => scene.update(ticker.deltaTime))
+    return () => scene.destroy()
   }
 
   return (
