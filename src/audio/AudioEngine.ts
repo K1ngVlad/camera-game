@@ -52,8 +52,7 @@ export class AudioEngine {
     const total = stemEntries.length + sfxEntries.length
     let loaded = 0
 
-    const expectedDuration =
-      (this.config.bars * this.config.beatsPerBar * 60) / this.config.bpm
+    const expectedDuration = (this.config.bars * this.config.beatsPerBar * 60) / this.config.bpm
 
     const decode = async (url: string): Promise<AudioBuffer> => {
       const resp = await fetch(url)
@@ -119,8 +118,7 @@ export class AudioEngine {
     this.sfxGain.gain.value = 1.0
     this.sfxGain.connect(this.limiter)
 
-    const loopDuration =
-      (this.config.bars * this.config.beatsPerBar * 60) / this.config.bpm
+    const loopDuration = (this.config.bars * this.config.beatsPerBar * 60) / this.config.bpm
 
     this.t0 = ctx.currentTime + 0.1
 

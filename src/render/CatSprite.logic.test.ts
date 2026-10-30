@@ -32,7 +32,13 @@ describe('computeScale', () => {
 
   it('breathing kicks in when amplitude < 0.05', () => {
     // At t=0.625s, sin(t*2π/2.5) = sin(π/2) = 1, so amplitude contributes
-    const cfg: CatAnimConfig = { squash: 0.2, axis: 'y', frameMode: 'none', frames: ['a'], breathe: 0.1 }
+    const cfg: CatAnimConfig = {
+      squash: 0.2,
+      axis: 'y',
+      frameMode: 'none',
+      frames: ['a'],
+      breathe: 0.1,
+    }
     const { sy: syBreathe } = computeScale(0.0, cfg, 0.625)
     const { sy: syBase } = computeScale(0.0, cfg, 0)
     // syBreathe should differ from syBase (breathing at different phase)
@@ -40,7 +46,13 @@ describe('computeScale', () => {
   })
 
   it('no breathing when amplitude >= 0.05', () => {
-    const cfg: CatAnimConfig = { squash: 0.2, axis: 'y', frameMode: 'none', frames: ['a'], breathe: 0.1 }
+    const cfg: CatAnimConfig = {
+      squash: 0.2,
+      axis: 'y',
+      frameMode: 'none',
+      frames: ['a'],
+      breathe: 0.1,
+    }
     const { sy: sy1 } = computeScale(0.1, cfg, 0)
     const { sy: sy2 } = computeScale(0.1, cfg, 100) // different time
     // Same amplitude → same result regardless of time

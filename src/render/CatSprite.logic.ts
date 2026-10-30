@@ -14,11 +14,7 @@ export interface ScaleResult {
  * Pivot at feet (anchor 0.5, 1), so stretch axis drives visual bounce.
  * When amplitude is below breathe threshold, substitute sine breathing.
  */
-export function computeScale(
-  amplitude: number,
-  cfg: CatAnimConfig,
-  timeSec: number,
-): ScaleResult {
+export function computeScale(amplitude: number, cfg: CatAnimConfig, timeSec: number): ScaleResult {
   const breatheThreshold = 0.05
   const breatheAmp = cfg.breathe ?? 0.015
   const k = cfg.squash

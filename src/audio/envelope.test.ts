@@ -9,7 +9,7 @@ function makeSilence(n: number): Float32Array[] {
 
 function makeSine(freq: number, amplitude: number, n: number): Float32Array[] {
   const ch = new Float32Array(n)
-  for (let i = 0; i < n; i++) ch[i] = amplitude * Math.sin(2 * Math.PI * freq * i / SR)
+  for (let i = 0; i < n; i++) ch[i] = amplitude * Math.sin((2 * Math.PI * freq * i) / SR)
   return [ch]
 }
 
@@ -28,7 +28,7 @@ function makeImpulses(periodSec: number, durationSec: number): Float32Array[] {
 describe('computeEnvelope', () => {
   it('returns all zeros for silence', () => {
     const env = computeEnvelope(makeSilence(SR), SR)
-    const allZero = Array.from(env.values).every(v => v < 1e-6)
+    const allZero = Array.from(env.values).every((v) => v < 1e-6)
     expect(allZero).toBe(true)
   })
 
@@ -53,7 +53,7 @@ describe('detectOnsets', () => {
   it('returns all zeros for silence envelope', () => {
     const values = new Float32Array(100)
     const onsets = detectOnsets(values)
-    expect(Array.from(onsets).every(v => v === 0)).toBe(true)
+    expect(Array.from(onsets).every((v) => v === 0)).toBe(true)
   })
 
   it('marks onsets for impulse bursts every 0.5 s', () => {
@@ -74,7 +74,7 @@ describe('detectOnsets', () => {
     // Signal hovering just at 0.4 (between on=0.5 and off=0.3) — never triggers
     const values = new Float32Array(200).fill(0.4)
     const onsets = detectOnsets(values)
-    expect(Array.from(onsets).every(v => v === 0)).toBe(true)
+    expect(Array.from(onsets).every((v) => v === 0)).toBe(true)
   })
 
   it('latches on once above threshold and stays on until below off', () => {

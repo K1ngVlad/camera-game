@@ -9,10 +9,7 @@ export interface Envelope {
 const HOP_SAMPLES = 441
 
 /** Compute RMS amplitude envelope for decoded audio channels. */
-export function computeEnvelope(
-  channels: Float32Array[],
-  sampleRate: number,
-): Envelope {
+export function computeEnvelope(channels: Float32Array[], sampleRate: number): Envelope {
   const numSamples = channels[0].length
   const hopSamples = Math.round(sampleRate * 0.01) // ~10 ms
   const numFrames = Math.ceil(numSamples / hopSamples)
@@ -40,8 +37,8 @@ export function computeEnvelope(
   for (let f = 0; f < numFrames; f++) rms[f] = Math.min(1, rms[f] * scale)
 
   // 3. Single-pole smoothing: attack ~10 ms, release ~120 ms
-  const alphaAttack = 1 - Math.exp(-1 / (sampleRate * 0.01 / hopSamples))
-  const alphaRelease = 1 - Math.exp(-1 / (sampleRate * 0.12 / hopSamples))
+  const alphaAttack = 1 - Math.exp(-1 / ((sampleRate * 0.01) / hopSamples))
+  const alphaRelease = 1 - Math.exp(-1 / ((sampleRate * 0.12) / hopSamples))
   const smooth = new Float32Array(numFrames)
   let prev = 0
   for (let f = 0; f < numFrames; f++) {
@@ -55,11 +52,7 @@ export function computeEnvelope(
 }
 
 /** Hysteresis onset detection on a normalized envelope. */
-export function detectOnsets(
-  values: Float32Array,
-  on = 0.5,
-  off = 0.3,
-): Uint8Array {
+export function detectOnsets(values: Float32Array, on = 0.5, off = 0.3): Uint8Array {
   const out = new Uint8Array(values.length)
   let active = false
   for (let i = 0; i < values.length; i++) {

@@ -25,3 +25,6 @@ dist-ssr
 
 # Generated placeholder audio stems
 public/assets/audio/placeholder/
+
+# Crash dumps
+*.stackdump
