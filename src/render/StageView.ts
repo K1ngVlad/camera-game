@@ -6,11 +6,12 @@ import type { CatId } from '../data/cats'
 import { CatSprite } from './CatSprite'
 import { engine } from '../audio/AudioEngine'
 import { catFrame, background } from '../assets/registry'
-import { GAME_W, GAME_H } from '../app/layout'
+import { GAME_W, GAME_H, STAGE_FLOOR_Y, STAGE_WING_W } from '../app/layout'
 
 export class StageView {
   private root: Container
   private catSprites: Map<CatId, CatSprite> = new Map()
+  private shadows: Graphics[] = []
   private unsubs: (() => void)[] = []
 
   constructor(app: Application) {
@@ -37,12 +38,25 @@ export class StageView {
     } else {
       this.root.addChildAt(this.makeFallbackBg(), 0)
     }
+    this.buildFloor()
   }
 
   private makeFallbackBg(): Graphics {
     const g = new Graphics()
     g.rect(0, 0, GAME_W, GAME_H).fill(0x0a0510)
     return g
+  }
+
+  private buildFloor() {
+    const g = new Graphics()
+    // floor fill
+    g.rect(0, STAGE_FLOOR_Y, GAME_W, GAME_H - STAGE_FLOOR_Y).fill(0x1a1030)
+    // bright edge at the floor line
+    g.rect(0, STAGE_FLOOR_Y, GAME_W, 3).fill(0x5540a0)
+    // side wings (curtains)
+    g.rect(0, 0, STAGE_WING_W, GAME_H).fill(0x0d0820)
+    g.rect(GAME_W - STAGE_WING_W, 0, STAGE_WING_W, GAME_H).fill(0x0d0820)
+    this.root.addChild(g)
   }
 
   private subscribeToStore() {
@@ -52,10 +66,13 @@ export class StageView {
   }
 
   private rebuildCats() {
+    // Destroy old sprites and shadows
     for (const sprite of this.catSprites.values()) {
       sprite.destroy()
     }
     this.catSprites.clear()
+    for (const s of this.shadows) s.destroy()
+    this.shadows = []
 
     const save = store.get(saveAtom)
     const foundIds = new Set(save.found)
@@ -68,9 +85,16 @@ export class StageView {
       const sprite = new CatSprite(cat.id, [Texture.WHITE], cat.anim, () => {})
 
       const x = cat.stagePos.x * GAME_W
-      const y = cat.stagePos.y * GAME_H
+      const floorY = cat.stagePos.y * GAME_H
+
+      // Shadow ellipse under the cat (anchor at bottom-centre)
+      const shadow = new Graphics()
+      shadow.ellipse(x, floorY, 40, 10).fill({ color: 0x000000, alpha: 0.25 })
+      this.root.addChild(shadow)
+      this.shadows.push(shadow)
+
       sprite.x = x
-      sprite.y = y
+      sprite.y = floorY
       sprite.scale.set(0.5)
 
       this.root.addChild(sprite)

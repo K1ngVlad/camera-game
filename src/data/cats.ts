@@ -53,7 +53,7 @@ export const CATS: CatConfig[] = [
     camera: 1,
     behavior: 'static',
     unlocks: { cameras: [3, 6], tools: ['horn'] },
-    stagePos: { x: 0.24, y: 0.92, scale: 0.4 },
+    stagePos: { x: 0.24, y: 0.78, scale: 0.4 },
     enabled: true,
   },
   {
@@ -65,7 +65,7 @@ export const CATS: CatConfig[] = [
     camera: 6,
     behavior: 'hornReveal',
     unlocks: { cameras: [7, 10], tools: [] },
-    stagePos: { x: 0.44, y: 0.92, scale: 0.4 },
+    stagePos: { x: 0.44, y: 0.78, scale: 0.4 },
     enabled: true,
   },
   {
@@ -77,7 +77,7 @@ export const CATS: CatConfig[] = [
     camera: 3,
     behavior: 'wait',
     unlocks: { cameras: [4, 9], tools: [] },
-    stagePos: { x: 0.64, y: 0.92, scale: 0.4 },
+    stagePos: { x: 0.64, y: 0.78, scale: 0.4 },
     enabled: true,
   },
   {
@@ -90,7 +90,7 @@ export const CATS: CatConfig[] = [
     behavior: 'uvOnly',
     unlocks: { cameras: [11, 13], tools: [] },
     grantsOnStart: ['uv'],
-    stagePos: { x: 0.84, y: 0.92, scale: 0.4 },
+    stagePos: { x: 0.84, y: 0.78, scale: 0.4 },
     enabled: true,
   },
   {
