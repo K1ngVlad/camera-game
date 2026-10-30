@@ -12,7 +12,8 @@
       "Bash(npx tsc *)",
       "Bash(node -e \"const pf = require\\('./node_modules/pixi-filters/dist/pixi-filters.cjs'\\); console.log\\(Object.keys\\(pf\\).filter\\(k => k.toLowerCase\\(\\).includes\\('noise'\\)\\)\\)\")",
       "Bash(node -e \"import\\('./node_modules/pixi.js/dist/pixi.mjs'\\).then\\(m => { const f = new m.NoiseFilter\\(\\); console.log\\(Object.keys\\(f\\)\\) }\\)\")",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(kill %1)"
     ]
   }
 }

@@ -59,7 +59,6 @@ export function Cameras() {
       style={{
         width: '100%',
         height: '100%',
-        background: 'var(--bg-deep)',
         display: 'flex',
         position: 'relative',
         boxSizing: 'border-box',
