@@ -7,6 +7,30 @@ import { SONG_TIMING, CAMERA_TIMING } from '../data/music'
 
 export type TrackId = string  // 'cam:<catId>', 'song:<catId>'
 
+/** Pure helper: compute camera loop TrackTiming from buffer duration + optional overrides. */
+export function computeCamTiming(
+  duration: number,
+  override: Partial<TrackTiming> = {},
+): { timing: TrackTiming; mismatch: boolean; computedBars: number } {
+  const bpm = override.bpm ?? 120
+  const beatsPerBar = override.beatsPerBar ?? 4
+  const secondsPerBar = (beatsPerBar * 60) / bpm
+  const computedBars = Math.round(duration / secondsPerBar)
+  const bars = override.bars ?? computedBars
+  const mismatch = Math.abs(duration - computedBars * secondsPerBar) > 0.03
+  return {
+    timing: {
+      bpm,
+      beatsPerBar,
+      bars,
+      loopStartBar: override.loopStartBar ?? 0,
+      loopEndBar: override.loopEndBar ?? bars,
+    },
+    mismatch,
+    computedBars,
+  }
+}
+
 export interface AudioManifest {
   camera: Partial<Record<CatId, string>>
   song: Partial<Record<CatId, string>>
@@ -103,10 +127,25 @@ export class AudioEngine {
         if (kind === 'sfx') {
           this.sfxBuffers.set(id, buffer)
         } else {
-          const timing: TrackTiming =
-            kind === 'cam'
-              ? (CAMERA_TIMING[id.slice(4) as CatId] ?? { bpm: 120, beatsPerBar: 4, bars: 4 })
-              : SONG_TIMING
+          let timing: TrackTiming
+          if (kind === 'cam') {
+            const catId = id.slice(4) as CatId
+            const { timing: camTiming, mismatch, computedBars } = computeCamTiming(
+              buffer.duration,
+              CAMERA_TIMING[catId] ?? {},
+            )
+            if (mismatch) {
+              const spb = (camTiming.beatsPerBar * 60) / camTiming.bpm
+              console.warn(
+                `[audio] cam:${catId}: expected ${computedBars} bars` +
+                  ` (${(computedBars * spb).toFixed(3)}s),` +
+                  ` got ${buffer.duration.toFixed(3)}s`,
+              )
+            }
+            timing = camTiming
+          } else {
+            timing = SONG_TIMING
+          }
           const channels: Float32Array[] = []
           for (let c = 0; c < buffer.numberOfChannels; c++) {
             channels.push(buffer.getChannelData(c))
@@ -419,19 +458,21 @@ export class AudioEngine {
     this.activeClock = clock
     this.beatT0 = t0
     if (clock === 'cam' && catId) {
-      const timing = CAMERA_TIMING[catId]
-      this.beatDet = createBeatDetector({
-        bpm: timing.bpm,
-        beatsPerBar: timing.beatsPerBar,
-        bars: timing.bars,
-      })
-    } else {
-      this.beatDet = createBeatDetector({
-        bpm: SONG_TIMING.bpm,
-        beatsPerBar: SONG_TIMING.beatsPerBar,
-        bars: SONG_TIMING.bars,
-      })
+      const timing = this.trackData.get(`cam:${catId}`)?.timing
+      if (timing) {
+        this.beatDet = createBeatDetector({
+          bpm: timing.bpm,
+          beatsPerBar: timing.beatsPerBar,
+          bars: timing.bars,
+        })
+        return
+      }
     }
+    this.beatDet = createBeatDetector({
+      bpm: SONG_TIMING.bpm,
+      beatsPerBar: SONG_TIMING.beatsPerBar,
+      bars: SONG_TIMING.bars,
+    })
   }
 }
 

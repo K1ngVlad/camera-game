@@ -10,15 +10,6 @@ export const SONG_TIMING: TrackTiming = {
   // TODO: confirm loop boundaries with composer
 }
 
-const DEFAULT_CAM: TrackTiming = { bpm: 120, beatsPerBar: 4, bars: 4 }
-
-export const CAMERA_TIMING: Record<CatId, TrackTiming> = {
-  drummer:  { ...DEFAULT_CAM },
-  longcat:  { ...DEFAULT_CAM },
-  keyboard: { ...DEFAULT_CAM },
-  pumpkin:  { ...DEFAULT_CAM },
-  choir:    { ...DEFAULT_CAM },
-  trumpet:  { ...DEFAULT_CAM },  // phrase 1 bar, silent 1 bar; loop covers both
-  popcat:   { ...DEFAULT_CAM },
-  bongo:    { ...DEFAULT_CAM },
-}
+// Only explicit overrides — omit a cat to auto-detect bars from buffer duration.
+// Example: { trumpet: { bars: 2 } } forces a 2-bar loop regardless of file length.
+export const CAMERA_TIMING: Partial<Record<CatId, Partial<TrackTiming>>> = {}
