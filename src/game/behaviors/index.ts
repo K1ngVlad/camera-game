@@ -3,6 +3,7 @@ import type { CatConfig } from '../../data/cats'
 import { staticBehavior } from './static'
 import { hornRevealBehavior } from './hornReveal'
 import { waitBehavior } from './wait'
+import { uvOnlyBehavior } from './uvOnly'
 
 /** Initialise puzzle state for the given cat. */
 export function initPuzzle(cat: CatConfig): unknown {
@@ -13,6 +14,8 @@ export function initPuzzle(cat: CatConfig): unknown {
       return hornRevealBehavior.init(cat, cat.behavior)
     case 'wait':
       return waitBehavior.init(cat, cat.behavior)
+    case 'uvOnly':
+      return uvOnlyBehavior.init(cat, cat.behavior)
     default:
       // Unimplemented behaviors fall back to static state
       return staticBehavior.init(cat, { type: 'static' })
@@ -41,6 +44,10 @@ export function applyEvent(
       const s = (state as WS | undefined) ?? waitBehavior.init(cat, cat.behavior as { type: 'wait'; bars: number })
       return waitBehavior.on(s, event, ctx)
     }
+    case 'uvOnly': {
+      const s = (state as { camera: number } | undefined) ?? uvOnlyBehavior.init(cat, cat.behavior)
+      return uvOnlyBehavior.on(s, event, ctx)
+    }
     default:
       return state
   }
@@ -62,6 +69,10 @@ export function getCatView(cat: CatConfig, state: unknown, ctx: WorldCtx): CatVi
       type WS = { camera: number; bars: number; catState: 'out' | 'peek' | 'in'; counter: number }
       const s = (state as WS | undefined) ?? waitBehavior.init(cat, cat.behavior as { type: 'wait'; bars: number })
       return waitBehavior.view(s, ctx)
+    }
+    case 'uvOnly': {
+      const s = (state as { camera: number } | undefined) ?? uvOnlyBehavior.init(cat, cat.behavior)
+      return uvOnlyBehavior.view(s, ctx)
     }
     default:
       // Unimplemented behaviors are always visible and clickable (fallback)

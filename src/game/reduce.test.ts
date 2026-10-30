@@ -104,6 +104,13 @@ describe('reduce - full pass (5 cats)', () => {
         }
       }
 
+      // uvOnly cats need UV on to be clickable
+      if (cat?.behavior.type === 'uvOnly' && !session.uv) {
+        const rUV = reduce(save, session, { type: 'toggleUV' })
+        save = rUV.save
+        session = rUV.session
+      }
+
       const r = reduce(save, session, { type: 'clickCat', target: catId })
       save = r.save
       session = r.session

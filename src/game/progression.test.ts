@@ -134,4 +134,9 @@ describe('worldState', () => {
     const save = makeSave(['drummer', 'longcat'])
     expect(worldState(save, makeSession({ camera: 3 }))).toEqual({})
   })
+
+  it('returns { blackout: true } when pumpkin is the current cat', () => {
+    const save = makeSave(['drummer', 'longcat', 'keyboard'])
+    expect(worldState(save, makeSession({ camera: 10 }))).toEqual({ blackout: true })
+  })
 })
