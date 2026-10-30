@@ -77,22 +77,20 @@ describe('registry — props and backgrounds (still missing)', () => {
   })
 })
 
-describe('registry — audio (still placeholder)', () => {
-  it('cameraTrack returns placeholder WAV path', () => {
+describe('registry — audio', () => {
+  it('cameraTrack returns real OGG path for drummer', () => {
     const url = cameraTrack('drummer')
-    expect(url).toContain('placeholder')
-    expect(url).toContain('drummer')
-    expect(url).toMatch(/\.wav$/)
+    expect(url).not.toContain('placeholder')
+    expect(url).toMatch(/\.ogg$/)
   })
 
-  it('songStem returns placeholder WAV path', () => {
+  it('songStem returns real OGG path for bongo', () => {
     const url = songStem('bongo')
-    expect(url).toContain('placeholder')
-    expect(url).toContain('bongo')
-    expect(url).toMatch(/\.wav$/)
+    expect(url).not.toContain('placeholder')
+    expect(url).toMatch(/\.ogg$/)
   })
 
-  it('sfx returns placeholder WAV path', () => {
+  it('sfx returns placeholder WAV path (no sfx files yet)', () => {
     expect(sfx('horn')).toContain('placeholder')
     expect(sfx('found')).toContain('placeholder')
   })
@@ -111,10 +109,10 @@ describe('registry — missingAssets', () => {
     expect(list).toContain('cats/keyboard/body.png')
   })
 
-  it('lists audio/camera/drummer as missing (no audio yet)', () => {
+  it('does not list audio/camera/drummer as missing (ogg exists)', () => {
     cameraTrack('drummer')
     const list = missingAssets()
-    expect(list).toContain('audio/camera/drummer')
+    expect(list).not.toContain('audio/camera/drummer')
   })
 
   it('list is always sorted', () => {

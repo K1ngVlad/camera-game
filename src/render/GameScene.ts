@@ -17,6 +17,7 @@ import { dispatch } from '../game/dispatch'
 import { CATS, CAT_MAP } from '../data/cats'
 import type { CatId } from '../data/cats'
 import { getCatView } from '../game/behaviors/index'
+import { currentCat } from '../game/progression'
 import { engine } from '../audio/AudioEngine'
 import { catFrame } from '../assets/registry'
 import { CAMERA_VIEWPORT } from '../app/layout'
@@ -133,10 +134,11 @@ export class GameScene {
     this.catSprites.clear()
 
     const save = store.get(saveAtom)
+    const current = currentCat(save.found)
 
     for (const cat of CATS) {
       if (!cat.enabled) continue
-      if (save.found.includes(cat.id)) continue
+      if (cat.id !== current) continue
 
       const view = getCatView(cat)
       if (view.camera !== cameraId) continue
