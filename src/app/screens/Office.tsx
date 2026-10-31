@@ -18,20 +18,41 @@ export function Office() {
   return (
     <div
       style={{
+        position: 'relative',
         width: '100%',
         height: '100%',
         background: 'var(--bg)',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: 40,
-        gap: 32,
         boxSizing: 'border-box',
         pointerEvents: 'auto',
-        // Dim the office background during blackout; buttons remain bright
-        filter: ws.blackout ? 'brightness(0.45)' : undefined,
-        transition: 'filter 0.8s ease',
+        overflow: 'hidden',
       }}
     >
+      {/* Blackout dim overlay: covers background only, interactive content stays bright above it */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(5, 4, 10, 0.55)',
+          opacity: ws.blackout ? 1 : 0,
+          transition: 'opacity 0.8s ease',
+          pointerEvents: 'none',
+          zIndex: 1,
+        }}
+      />
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 2,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: 40,
+          gap: 32,
+          boxSizing: 'border-box',
+        }}
+      >
       {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2
@@ -227,6 +248,7 @@ export function Office() {
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

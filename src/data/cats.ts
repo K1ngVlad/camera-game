@@ -90,7 +90,7 @@ export const CATS: CatConfig[] = [
     tint: '#F28C28',
     camera: 10,
     behavior: { type: 'uvOnly' },
-    unlocks: { cameras: [11, 13], tools: [] },
+    unlocks: { cameras: [11, 13], tools: ['uv'] },
     grantsOnStart: ['uv'],
     onStartSfx: 'blackout',
     stagePos: { x: 0.84, y: 0.78, scale: 0.4 },
